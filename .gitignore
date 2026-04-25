@@ -1,0 +1,37 @@
+# Node and frontend
+node_modules/
+.next/
+dist/
+build/
+coverage/
+
+# Python and backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local generated artifacts
+TEAM_DETAILED_STEPS_print.html
+
+# Data outputs
+data/processed/*
+!data/processed/.gitkeep
