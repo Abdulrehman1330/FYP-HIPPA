@@ -3,92 +3,70 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models.document import Document
+from app.models.document import Document, DocumentStatus, DocumentType
+from app.services.audit_service import log_action
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 ALLOWED_CONTENT_TYPES = {"application/pdf", "image/png", "image/jpeg"}
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+MAX_FILE_SIZE = 10 * 1024 * 1024
 DEFAULT_STORAGE_DIR = "storage/documents"
 
 
-async def parse_and_validate_upload(file: UploadFile) -> tuple[dict[str, str | int], bytes]:
-    filename = file.filename or ""
-    extension = Path(filename).suffix.lower()
+def get_storage_dir() -> Path:
+    path = Path(os.getenv("DOCUMENT_STORAGE_DIR", DEFAULT_STORAGE_DIR))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
-    if not filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Filename is required.",
-        )
 
-    if extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file extension. Use PDF, PNG, JPG, or JPEG.",
-        )
+def validate_file(file: UploadFile) -> None:
+    if not file.filename:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Filename is required")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only PDF, PNG, JPG files are supported")
 
     if file.content_type and file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported content type.",
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported content type")
+
+
+def infer_document_type(filename: str) -> DocumentType:
+    name = filename.lower()
+    if "oasis" in name:
+        return DocumentType.OASIS_E2
+    if "care" in name or "poc" in name:
+        return DocumentType.POC
+    return DocumentType.OTHER
+
+
+async def store_document(file: UploadFile, user_id: int, db: Session) -> Document:
+    validate_file(file)
 
     contents = await file.read()
-    size_bytes = len(contents)
+    if len(contents) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty")
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 10 MB limit")
 
-    if size_bytes == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file is empty.",
-        )
-
-    if size_bytes > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File exceeds 10 MB limit.",
-        )
-
-    await file.seek(0)
-
-    metadata = {
-        "filename": filename,
-        "content_type": file.content_type or "application/octet-stream",
-        "size_bytes": size_bytes,
-        "extension": extension,
-    }
-    return metadata, contents
-
-
-def get_storage_dir() -> Path:
-    configured_path = os.getenv("DOCUMENT_STORAGE_DIR", DEFAULT_STORAGE_DIR)
-    return Path(configured_path)
-
-
-async def store_uploaded_document(file: UploadFile, db: Session) -> Document:
-    metadata, contents = await parse_and_validate_upload(file)
-
-    storage_dir = get_storage_dir()
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
-    stored_filename = f"{uuid4().hex}{metadata['extension']}"
-    stored_path = storage_dir / stored_filename
+    ext = Path(file.filename).suffix.lower()
+    stored_name = f"{uuid4().hex}{ext}"
+    stored_path = get_storage_dir() / stored_name
 
     try:
         stored_path.write_bytes(contents)
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to store file locally: {exc}",
-        ) from exc
+    except OSError as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Storage error: {e}")
 
     document = Document(
-        original_filename=str(metadata["filename"]),
-        stored_filename=stored_filename,
-        content_type=str(metadata["content_type"]),
-        size_bytes=int(metadata["size_bytes"]),
+        user_id=user_id,
+        original_filename=file.filename,
+        stored_filename=stored_name,
+        content_type=file.content_type or "application/octet-stream",
+        file_type=infer_document_type(file.filename),
+        status=DocumentStatus.UPLOADED,
+        size_bytes=len(contents),
         storage_path=str(stored_path),
     )
 
@@ -96,11 +74,12 @@ async def store_uploaded_document(file: UploadFile, db: Session) -> Document:
         db.add(document)
         db.commit()
         db.refresh(document)
-        return document
-    except SQLAlchemyError as exc:
+    except Exception:
         db.rollback()
         stored_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to save metadata in database.",
-        ) from exc
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Database error")
+
+    log_action(db, "document.upload", user_id=user_id, document_id=document.id,
+               details={"filename": file.filename, "size": len(contents)})
+
+    return document

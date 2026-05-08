@@ -1,35 +1,46 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.auth import router as auth_router
 from app.api.routes.documents import router as documents_router
-from app.db.session import check_db_connection, initialize_database
+from app.api.routes.poc import router as poc_router
+from app.api.routes.review import router as review_router
+from app.api.routes.risk import router as risk_router
+from app.db.session import initialize_database
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Healthcare Document Automation API",
-        version="0.1.0",
-        description="MVP backend for healthcare document automation.",
+        version="1.0.0",
+        description="HIPAA-compliant backend for healthcare document automation.",
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://localhost:3001"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(auth_router)
     app.include_router(documents_router)
+    app.include_router(review_router)
+    app.include_router(poc_router)
+    app.include_router(risk_router)
 
     @app.on_event("startup")
     def startup_event() -> None:
         initialize_database()
 
     @app.get("/")
-    async def root() -> dict[str, str]:
-        return {"message": "API is running"}
+    async def root():
+        return {"message": "Healthcare Document API v1.0"}
 
     @app.get("/health")
-    async def health() -> dict[str, str]:
+    async def health():
         return {"status": "ok"}
-
-    @app.get("/health/db")
-    async def database_health() -> dict[str, str]:
-        if check_db_connection():
-            return {"status": "ok", "database": "connected"}
-        return {"status": "degraded", "database": "unreachable"}
 
     return app
 

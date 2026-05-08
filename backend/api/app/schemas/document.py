@@ -3,20 +3,39 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class UploadStoredResponse(BaseModel):
-    document_id: int = Field(..., gt=0)
-    filename: str = Field(..., min_length=1)
-    stored_filename: str = Field(..., min_length=1)
-    content_type: str = Field(..., min_length=1)
-    size_bytes: int = Field(..., gt=0)
+class UploadResponse(BaseModel):
+    document_id: int
+    filename: str
+    status: str
+    file_type: str
+    size_bytes: int
     message: str
 
 
-class DocumentMetadataResponse(BaseModel):
-    document_id: int = Field(..., gt=0)
-    filename: str = Field(..., min_length=1)
-    stored_filename: str = Field(..., min_length=1)
-    content_type: str = Field(..., min_length=1)
-    size_bytes: int = Field(..., ge=0)
-    storage_path: str = Field(..., min_length=1)
+class DocumentResponse(BaseModel):
+    id: int
+    filename: str
+    stored_filename: str
+    content_type: str
+    file_type: str
+    status: str
+    size_bytes: int
     created_at: datetime
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[DocumentResponse]
+    total: int
+    page: int
+    limit: int
+
+
+class ExtractionResponse(BaseModel):
+    extraction_id: int
+    document_id: int
+    status: str
+    provider: str
+    extracted_text: str
+    extracted_fields: dict[str, str]
+    created_at: datetime
+    updated_at: datetime

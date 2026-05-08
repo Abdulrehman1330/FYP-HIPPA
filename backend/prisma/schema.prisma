@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CLINICIAN
+  VIEWER
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PREPROCESSING
+  EXTRACTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  POC_GENERATED
+  RISK_SCORED
+}
+
+enum DocumentType {
+  OASIS_E2
+  POC
+  OTHER
+}
+
+enum ReviewActionType {
+  APPROVE
+  EDIT
+  REJECT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole @default(CLINICIAN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents          Document[]
+  reviewActions      ReviewAction[]
+  auditLogs          AuditLog[]
+  claimedDocuments   Document[]     @relation("DocumentReviewer")
+
+  @@map("users")
+}
+
+model Document {
+  id                  String         @id @default(uuid())
+  userId              String
+  filename            String
+  fileType            DocumentType   @default(OTHER)
+  status              DocumentStatus @default(UPLOADED)
+  storagePath         String
+  sizeBytes           Int
+  contentType         String
+  uploadedAt          DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  reviewClaimedById   String?
+  reviewClaimedAt     DateTime?
+  reviewCompletedAt   DateTime?
+
+  user            User             @relation(fields: [userId], references: [id])
+  reviewClaimedBy User?            @relation("DocumentReviewer", fields: [reviewClaimedById], references: [id])
+  extractedFields ExtractedField[]
+  reviewActions   ReviewAction[]
+  generatedPocs   GeneratedPoc[]
+  riskScore       RiskScore?
+  auditLogs       AuditLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([reviewClaimedById])
+  @@map("documents")
+}
+
+model ExtractedField {
+  id            String   @id @default(uuid())
+  documentId    String
+  fieldName     String
+  fieldValue    String?
+  confidence    Float    @default(0)
+  sourceSnippet String?
+  extractedAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("extracted_fields")
+}
+
+model ReviewAction {
+  id         String           @id @default(uuid())
+  documentId String
+  reviewerId String
+  action     ReviewActionType
+  fieldEdits Json?
+  comments   String?
+  timestamp  DateTime         @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  reviewer User     @relation(fields: [reviewerId], references: [id])
+
+  @@index([documentId])
+  @@map("review_actions")
+}
+
+model GeneratedPoc {
+  id              String    @id @default(uuid())
+  documentId      String
+  version         Int       @default(1)
+  parentVersionId String?
+  sections        Json
+  status          String    @default("draft")
+  generatedById   String?
+  generatedAt     DateTime  @default(now())
+  approvedById    String?
+  approvedAt      DateTime?
+
+  document      Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parentVersion GeneratedPoc? @relation("PocLineage", fields: [parentVersionId], references: [id])
+  childVersions GeneratedPoc[] @relation("PocLineage")
+
+  @@unique([documentId, version])
+  @@index([documentId])
+  @@map("generated_pocs")
+}
+
+model RiskScore {
+  id          String   @id @default(uuid())
+  documentId  String   @unique
+  riskScore   Float
+  riskClass   String
+  explanation Json
+  predictedAt DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("risk_scores")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  userId     String?
+  documentId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  timestamp  DateTime @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

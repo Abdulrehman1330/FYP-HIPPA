@@ -2,7 +2,7 @@
 
 Primary FastAPI application.
 
-Current status (Step 5):
+Current status (Step 6):
 
 - FastAPI app bootstrap
 - Layered package skeleton: API, Services, Models, Schemas
@@ -10,6 +10,7 @@ Current status (Step 5):
 - Upload API for PDF/image files
 - Local file storage + PostgreSQL metadata persistence
 - Simple document metadata endpoints (list + retrieve)
+- OCR extraction endpoint scaffold with persisted output
 
 ## Run locally
 
@@ -34,6 +35,8 @@ Current status (Step 5):
 - Upload: `POST http://127.0.0.1:8000/documents/upload`
 - List documents: `GET http://127.0.0.1:8000/documents?limit=20&offset=0`
 - Get document: `GET http://127.0.0.1:8000/documents/{document_id}`
+- Run extraction: `POST http://127.0.0.1:8000/documents/{document_id}/extract`
+- Get extraction: `GET http://127.0.0.1:8000/documents/{document_id}/extract`
 - Swagger UI: `http://127.0.0.1:8000/docs`
 
 ## Database configuration
@@ -56,7 +59,7 @@ DOCUMENT_STORAGE_DIR=storage/documents
 
 If not set, uploads are saved to `storage/documents` under `backend/api`.
 
-## Upload API (Step 5)
+## Upload API (Step 6)
 
 - Endpoint: `POST /documents/upload`
 - Accepted file types: PDF, PNG, JPG, JPEG
@@ -85,3 +88,18 @@ curl -X POST "http://127.0.0.1:8000/documents/upload" \
 - Get metadata by id:
   - Endpoint: `GET /documents/{document_id}`
   - Returns 404 if the id does not exist
+
+## Extraction endpoints (Step 6)
+
+- Run extraction:
+  - Endpoint: `POST /documents/{document_id}/extract`
+  - Behavior:
+    - reads the stored file from local disk
+    - generates a local OCR stub output
+    - stores extraction result in PostgreSQL table `document_extractions`
+    - if extraction exists already, it updates it
+- Get extraction result:
+  - Endpoint: `GET /documents/{document_id}/extract`
+  - Returns 404 if extraction has not been run yet
+
+Note: This is a local placeholder for now. Replace extraction logic with Azure OCR in the integration phase.

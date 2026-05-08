@@ -25,16 +25,22 @@ def get_db() -> Generator[Session, None, None]:
 
 def check_db_connection() -> bool:
     try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         return True
     except Exception:
         return False
 
 
 def initialize_database() -> bool:
-    # Import model modules so SQLAlchemy metadata includes all tables.
+    from app.models.audit_log import AuditLog  # noqa: F401
     from app.models.document import Document  # noqa: F401
+    from app.models.document_extraction import DocumentExtraction  # noqa: F401
+    from app.models.extracted_field import ExtractedField  # noqa: F401
+    from app.models.generated_poc import GeneratedPoc  # noqa: F401
+    from app.models.review_action import ReviewAction  # noqa: F401
+    from app.models.risk_score import RiskScore  # noqa: F401
+    from app.models.user import User  # noqa: F401
 
     try:
         Base.metadata.create_all(bind=engine)
