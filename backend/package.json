@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "node src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:reset": "prisma migrate reset",
+    "db:studio": "prisma studio",
+    "setup": "npm install && npm run db:migrate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
