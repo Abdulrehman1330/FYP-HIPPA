@@ -870,3 +870,12 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Work done estimate: Abdul's RAG semester slice remains complete for the 30-40% demo milestone, with a more professional UI safety baseline.
 - Work left for production: Replace the static demo with a real Next.js implementation using the final design system, real auth, and database-backed RAG storage/audit.
 - Blockers or risks: The static page is still a demo artifact, not the final frontend architecture.
+
+### 2026-05-09 - Merge With Remote Backend Scaffold
+
+- Changed: Fetched `origin/main`, committed local RAG/report work, merged the remote backend scaffold, resolved conflicts in `backend/api/app/__init__.py` and `backend/api/app/main.py`, and updated `backend/api/README.md`.
+- Why: A teammate pushed the document upload API scaffold to `origin/main`; Abdul's RAG assistant needed to be merged without losing either implementation.
+- Current status: The combined FastAPI app includes RAG endpoints and will include document routes when the local environment has the required SQLAlchemy 2.x dependency stack. RAG tests pass after the merge.
+- Work done estimate: Merge/integration is complete locally; pending final merge commit and push after validation.
+- Work left: Finish merge commit, push `main`, then install backend API dependencies in a clean virtual environment if document upload routes need to be tested locally.
+- Blockers or risks: The current machine has SQLAlchemy 1.4, while the teammate scaffold requires SQLAlchemy 2.x. The app now degrades gracefully for document routes instead of crashing, but full document API testing requires installing `backend/api/requirements.txt`.
