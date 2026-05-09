@@ -663,3 +663,210 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 2. Asad should leave the first meeting with the field dictionary and draft API schema as his immediate deliverable.
 3. Ayesh should leave the first meeting with core wireframes and the frontend shell as her immediate deliverable.
 4. The team should not start advanced AI features until upload, extraction, and review are working in sequence.
+
+---
+
+## Session Notes
+
+### 2026-04-29 - Documentation Asset Check
+
+- Changed: Verified available documentation assets before starting report work.
+- Why: Documentation work needs the existing proposal and official report template as source inputs.
+- Current status: `fyp proposal final (1).docx` is available at the project root; no FYP report template was found in the repository or `docs/reports`.
+- Next steps: Add the official report template to `docs/reports` before drafting the final report structure.
+- Blockers or risks: `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` cannot be updated in this environment because the `D:` drive is unavailable; `rg` is installed but cannot execute from the Codex app path, so PowerShell recursion is the safer fallback here.
+
+### 2026-04-29 - Chapter 2 Literature Review Draft
+
+- Changed: Created `docs/reports/Chapter_2_Literature_Review_Related_Work_Research_Gap.docx` covering sections 2.1 Literature Review, 2.2 Summary Table of Related Work, and 2.3 Research Gap Identification.
+- Why: The report needs a researched Chapter 2 foundation based on the proposal, FYP-I R&D template, and report-writing guide.
+- Current status: DOCX generated with IEEE-style citations and visually checked through artifact-tool PNG renders; the related-work table is embedded as high-resolution table images because native DOCX tables rendered incorrectly in artifact-tool.
+- Next steps: Review wording with supervisor/team, then merge approved content into the full FYP report template and consolidate references in the final References chapter.
+- Blockers or risks: `GLOBAL_MEMORY.md` still cannot be updated because `D:` is unavailable. Environment lessons: use PowerShell here-strings instead of Bash heredocs; set `PYTHONIOENCODING=utf-8` for DOCX text extraction; avoid very long inline Windows commands; artifact-tool may return nonzero while still producing PNGs; LibreOffice cross-check is unavailable because no `soffice` binary is installed.
+
+### 2026-04-29 - Architecture Diagram Source
+
+- Changed: Added `docs/architecture/fyp_architecture_diagram.mmd` and `docs/architecture/fyp_architecture_eraser.io` as architecture diagram source files.
+- Why: The FYP report needs a professional system architecture diagram that can be rendered and polished in diagram tools.
+- Current status: Eraser.io source covers users, secure Azure cloud boundary, frontend, FastAPI backend, AI processing, data storage, security controls, audit logs, OASIS-E2 extraction, POC generation, and readmission prediction.
+- Next steps: Paste the Eraser.io source into Eraser, adjust icon names if Eraser reports unsupported icons, export as PNG/SVG, and insert into the report.
+- Blockers or risks: Eraser icon names may vary by workspace; if an icon fails, replace it with a generic icon such as `server`, `database`, `lock`, `cloud`, or `file`.
+
+### 2026-04-29 - Chapter 3 Dataset and AI Models Draft
+
+- Changed: Created `docs/reports/Chapter_3_Dataset_Detail_AI_Models_Algorithms.docx` covering sections 3.7 Dataset Detail and 3.8 AI Models & Algorithms.
+- Why: The report needs methodology content after the architecture diagram explaining the planned dataset, privacy posture, feature groups, model pipeline, algorithms, and evaluation metrics.
+- Current status: DOCX generated using the FYP report template style and visually checked through artifact-tool PNG renders; wide summary tables are embedded as high-resolution images to avoid DOCX table render issues.
+- Next steps: Review with the team/supervisor, then merge approved sections into the full Chapter 3 report document after the architecture diagram.
+- Blockers or risks: `GLOBAL_MEMORY.md` still cannot be updated because `D:` is unavailable. Environment lesson: the report template does not expose `List Bullet` to `python-docx`, so generated bullets should use explicit text or verified style names.
+
+### 2026-04-29 - Open-Source Model Revision
+
+- Changed: Revised Chapter 2 and Chapter 3 DOCX drafts to make the primary implementation stack student-friendly and open-source.
+- Why: The project must be implementable by students without relying on paid cloud AI services.
+- Current status: Chapter 2 and Chapter 3 now emphasize Tesseract OCR, OpenCV preprocessing, rule-based extraction, deterministic validation, template-based POC generation, scikit-learn Logistic Regression/Random Forest, optional XGBoost/LightGBM, and SHAP.
+- Next steps: If the architecture diagram still names Azure AI Document Intelligence or Azure OpenAI as core services, update the diagram to mark them as optional future/benchmark components or remove them from the MVP path.
+- Blockers or risks: Existing Word temporary lock files may appear when a DOCX is open in Word; close the document before regenerating if overwrite errors occur.
+
+### 2026-04-29 - Open-Source Architecture Diagram Revision
+
+- Changed: Updated `docs/architecture/fyp_architecture_eraser.io` and `docs/architecture/fyp_architecture_diagram.mmd` to match the open-source MVP implementation stack.
+- Why: Architecture must align with the revised report sections and avoid presenting paid AI services as required components.
+- Current status: Diagram source now uses OpenCV preprocessing, Tesseract OCR, rule-based extraction, validation rules, template-based POC generation, scikit-learn risk model, optional XGBoost/LightGBM, SHAP, PostgreSQL, secure file storage, audit logs, and secrets/config management.
+- Next steps: Paste the updated Eraser.io source into Eraser, regenerate the diagram, and replace the old architecture image in the report.
+- Blockers or risks: Managed Document AI and LLM/RAG are now marked only as optional future benchmarks/enhancements, not core MVP components.
+
+### 2026-04-29 - Core RAG Implementation Revision
+
+- Changed: Revised Chapter 2, Chapter 3, and both architecture diagram source files to make Retrieval-Augmented Generation a core Plan of Care drafting component.
+- Why: The team decided to implement RAG in the MVP instead of describing it as a future enhancement.
+- Current status: The documentation now defines a core RAG flow: approved OASIS-E2 fields and source snippets are indexed, a retrieval service returns top-k evidence, the POC generator creates cited drafts, and clinicians must review/approve the output. The implementation remains student-friendly by allowing local FAISS/Chroma retrieval or TF-IDF/BM25 fallback, with optional hosted LLM only as a generator backend.
+- Next steps: Select the first RAG implementation path, preferably TF-IDF/BM25 baseline first and FAISS/Chroma embeddings second; create a small evidence corpus with source IDs; add retrieval and citation evaluation metrics.
+- Blockers or risks: RAG adds hallucination, retrieval-quality, citation-coverage, and compute/API risks. Keep unsupported-statement checks, missing-evidence warnings, audit logging, and human review mandatory. `GLOBAL_MEMORY.md` still cannot be updated because the `D:` drive is unavailable; artifact-tool again returned nonzero while producing usable DOCX page PNGs, so page images were inspected manually.
+
+### 2026-04-29 - Professional Eraser Architecture Rewrite
+
+- Changed: Rewrote `docs/architecture/fyp_architecture_eraser.io` into a cleaner layered architecture diagram source.
+- Why: The previous architecture code was technically correct but visually too flat for a professional report diagram.
+- Current status: The new Eraser source separates actors, presentation, identity/access, backend workflow, document AI, core RAG implementation, risk prediction, protected data stores, security/governance, and optional external benchmarks. The RAG path is numbered and shown as a core flow from evidence building to retrieval, cited generation, guardrails, and clinician approval.
+- Next steps: Paste the updated source into Eraser.io, auto-layout the diagram, then export as PNG/SVG for the Chapter 3 architecture figure.
+- Blockers or risks: Eraser icon names can vary by workspace. If an icon fails, replace only that icon with a generic one such as `server`, `database`, `file`, `lock`, `cloud`, or `shield`.
+
+### 2026-04-29 - Compact Architecture Diagram Source
+
+- Changed: Reduced `docs/architecture/fyp_architecture_eraser.io` from a detailed service-level diagram to a compact report-friendly architecture.
+- Why: The professional version was too large for insertion into the report.
+- Current status: The compact diagram now uses 11 main nodes across application, AI pipeline, protected data, and governance layers while preserving the numbered upload, extraction, RAG POC, risk, audit, and optional benchmark flows.
+- Next steps: Paste the compact source into Eraser.io, use auto-layout, and export the smaller architecture figure.
+- Blockers or risks: If Eraser still renders it too wide, use portrait/page-fit export or remove the optional external services node from the final report figure.
+
+### 2026-05-06 - Abdul Semester Scope Review
+
+- Changed: Reviewed proposal, planning docs, Chapter 2, Chapter 3, architecture source, and repository structure to clarify Abdul Rehman's role for a 30-40% semester demonstration.
+- Why: The team needs a realistic first-semester target that matches Abdul's ownership: architecture, security, cloud/devops planning, ML/RAG governance, and integration decisions.
+- Current status: Recommended focus is a 30-40% vertical slice: finalized architecture and security model, runnable skeleton, synthetic OASIS/POC dataset plan, OCR/extraction proof, RAG evidence/citation prototype, and readmission-risk baseline design or notebook.
+- Next steps: Abdul should lock scope with Asad and Ayesh, then drive Phase 0-2 completion before expanding into full RAG and risk integration.
+- Blockers or risks: Current repository is still mostly structure and documentation, not implemented product code. `GLOBAL_MEMORY.md` remains unavailable because the `D:` drive is not mounted.
+
+### 2026-05-06 - Explanation Rule Added
+
+- Changed: Added an explanation and knowledge-transfer rule to `AGENTS.md`.
+- Why: Abdul wants every task explained properly so he understands what was done, why it matters, and how to present or defend it.
+- Current status: Future work should include concise explanations of changed files, practical working logic, affected components, limitations, and presentation talking points where relevant.
+- Next steps: Apply this rule to all future documentation, architecture, backend, frontend, RAG, OCR, and prediction-model work.
+- Blockers or risks: `GLOBAL_MEMORY.md` remains unavailable because the `D:` drive is not mounted.
+
+### 2026-05-08 - Abdul Clinician RAG Assistant Prototype
+
+- Changed: Implemented Abdul Rehman's clinician-facing RAG chatbot MVP slice with a synthetic approved evidence corpus, TF-IDF retrieval, cited answer generation, refusal behavior, backend service adapter, command-line demo, workflow documentation, and unit tests.
+- Why: Abdul's semester contribution is now a concrete technical implementation, not only supervision. The module demonstrates that RAG is a core MVP feature for cited Plan of Care assistance.
+- Current status: `python -m unittest backend.tests.unit.test_rag_assistant -v` passes 5/5 tests. `python backend\modules\poc\rag_demo.py` shows supported cited answers and refuses the unsupported insulin question because the only insulin text is unapproved OCR.
+- Abdul presentation explanation: The assistant is a controlled clinician RAG baseline, not a public chatbot. It does not answer from internet knowledge or model memory. It first retrieves approved patient-specific OASIS/POC evidence, then returns a cited response. If evidence is missing or only available in unapproved OCR, it refuses and asks for clinician-approved support.
+- Next steps: Connect `backend/api/app/rag_service.py` to a FastAPI route, replace the JSON evidence file with PostgreSQL-backed approved snippets, add audit logging for every question/retrieval/answer, and add retrieval metrics such as citation coverage and unsupported-answer refusal rate.
+- Blockers or risks: This is a local TF-IDF baseline, not a full LLM system. It is suitable for the 30-40% milestone but still needs API wiring, persistent storage, auth/RBAC checks, audit logs, and clinician review before production use. `GLOBAL_MEMORY.md` remains unavailable because the `D:` drive is not mounted; `rg.exe` also fails from the Codex app path with access denied, so PowerShell file commands are being used as the safer fallback. Avoid Bash heredoc syntax in PowerShell; use `python -c` or PowerShell here-strings instead.
+
+### 2026-05-08 - RAG API Contract and Route Adapter
+
+- Changed: Added `docs/api/rag_assistant_api.md`, `backend/api/app/rag_routes.py`, and `backend/tests/unit/test_rag_service.py`.
+- Why: The RAG assistant now needs a clean handoff point for backend and frontend integration. The API contract tells Asad and Ayesh exactly what request/response shape to build against.
+- Current status: The route adapter is FastAPI-ready but optional-safe, so it imports cleanly even before FastAPI is installed. The service adapter returns serializable dictionaries for clinician Q&A and cited POC section generation.
+- Next steps: Add the real FastAPI app entrypoint, install backend dependencies, include the RAG router, then add auth/RBAC and audit logging before allowing real clinician workflow use.
+- Blockers or risks: The route adapter does not yet enforce authentication or patient authorization. It must not be exposed publicly until login, role checks, patient access checks, and audit logs are implemented.
+
+### 2026-05-08 - RAG FastAPI Endpoint Demo
+
+- Changed: Added `backend/api/app/main.py` and `backend/tests/unit/test_rag_api.py`.
+- Why: Abdul needs a demonstrable backend endpoint for the 30-40% milestone, not only a command-line demo. The API now exposes `/health`, `/rag/question`, and `/rag/poc-section`.
+- Current status: The FastAPI app includes the RAG router in this environment. Endpoint tests verify cited mobility/fall-risk answers, cited POC section generation, and refusal for unsupported insulin questions.
+- Next steps: Add dependency pinning, then layer auth, RBAC, patient-access checks, and audit logging around these endpoints before frontend integration.
+- Blockers or risks: This is still a demo endpoint using synthetic JSON evidence. It must not be connected to real PHI until secure storage, approved evidence persistence, and audit controls exist.
+
+### 2026-05-08 - RAG Security and Audit Demo Layer
+
+- Changed: Added `backend/requirements.txt`, `backend/api/app/security.py`, `backend/api/app/audit.py`, demo identity headers, patient-access checks, and JSONL audit logging for RAG service calls.
+- Why: A clinician chatbot must not be treated as a public endpoint. Abdul needs to show that RAG answers are protected by role checks, patient access, and traceable audit events.
+- Current status: RAG endpoints require `X-User-Id`, `X-Role`, and `X-Patient-Ids` headers. Supported roles are clinician, reviewer, and admin. Non-admin users can only query patients listed in `X-Patient-Ids`. Each RAG answer now includes an `audit_event_id` and writes an ignored audit event under `data/processed/rag_audit_log.jsonl`.
+- Work done estimate: Abdul's RAG semester slice is now about 70% complete for the 30-40% milestone. Completed: evidence store, retrieval, citations, refusal logic, POC draft support, API contract, FastAPI endpoints, demo RBAC, patient access, audit logging, docs, and tests.
+- Work left: Replace demo headers with real authentication, store approved evidence in PostgreSQL, add audit-log review/export, build a simple frontend chatbot screen, add retrieval metrics, and connect with the document review approval workflow.
+- Blockers or risks: Header-based identity is for demo only and is not secure enough for production. Audit logs are local JSONL and must move to database-backed immutable audit storage later. Environment lesson: FastAPI/Pydantic in this environment may fail to evaluate `str | None` annotations in dependency functions, so use `Optional[str]` for request dependency parameters.
+
+### 2026-05-08 - RAG Retrieval Evaluation Metrics
+
+- Changed: Added `data/synthetic/rag_eval_questions.json`, `backend/modules/poc/rag_evaluation.py`, and `backend/tests/unit/test_rag_evaluation.py`.
+- Why: Abdul needs measurable demo evidence, not only a working chatbot. The evaluator shows citation coverage for supported questions and refusal accuracy for unsupported questions.
+- Current status: The default evaluation runs against four synthetic cases: mobility/fall-risk summary, fall-prevention evidence support, main care problems, and unsupported insulin advice. It reports average citation coverage, refusal accuracy, and per-case source ID matches.
+- Work done estimate: Abdul's RAG semester slice is now about 78% complete for the 30-40% milestone. Completed: chatbot retrieval, citations, refusal behavior, POC draft support, FastAPI endpoints, demo RBAC, patient access, audit logging, API docs, workflow docs, and retrieval metrics.
+- Work left: Build a simple frontend chatbot screen, move evidence storage to PostgreSQL, replace demo auth headers with real authentication, add an audit-log viewer/export, and connect the evidence store to the document review approval workflow.
+- Blockers or risks: Current evaluation uses a small synthetic test set, so the metrics prove behavior for the demo cases only. More scenarios are needed before claiming general clinical reliability. Environment lesson: scripts inside package folders need the repository root added to `sys.path` when they are intended to run directly by file path in PowerShell.
+
+### 2026-05-08 - RAG Evidence Repository and PostgreSQL Schema
+
+- Changed: Added `backend/modules/poc/evidence_repository.py`, `backend/tests/unit/test_evidence_repository.py`, and `docs/api/rag_evidence_schema.md`. Updated the RAG service to load evidence through the repository abstraction instead of directly from JSON.
+- Why: The RAG assistant needs a clean path from the current synthetic JSON demo store to the real approved-evidence database. The repository contract lets the team replace JSON with PostgreSQL without rewriting chatbot logic.
+- Current status: `JsonEvidenceRepository` filters approved evidence and can scope evidence by patient. The schema document defines the future `rag_evidence_snippets` table, indexes, lifecycle, minimum fields, and security rules.
+- Work done estimate: Abdul's RAG semester slice is now about 83% complete for the 30-40% milestone. Completed: approved evidence repository, retrieval, citations, refusal behavior, POC draft support, endpoints, demo RBAC, patient access, audit logging, API/docs, workflow docs, metrics, and tests.
+- Work left: Implement the actual PostgreSQL repository, build the frontend chatbot screen, replace demo headers with real authentication, add audit-log review/export, and connect approved snippets to Asad's document review workflow.
+- Blockers or risks: The repository is still JSON-backed for the demo. PostgreSQL integration depends on the backend database setup and review table design.
+
+### 2026-05-08 - RAG Audit Review Endpoint
+
+- Changed: Added recent audit-log reading in `backend/api/app/audit.py` and exposed `GET /rag/audit/recent` through `backend/api/app/rag_routes.py`. Added tests for reviewer access and clinician rejection.
+- Why: Abdul should be able to demonstrate that chatbot actions are traceable. A reviewer/admin can inspect which user asked what, which patient was involved, whether the assistant refused, and which source IDs were returned.
+- Current status: The audit review endpoint is restricted to reviewer/admin demo roles. Clinicians can ask RAG questions but cannot view the audit log. Local audit events remain ignored under `data/processed/rag_audit_log.jsonl`.
+- Work done estimate: Abdul's RAG semester slice is now about 88% complete for the 30-40% milestone. Completed: RAG chatbot, citations, refusal behavior, POC section drafting, endpoints, demo auth/RBAC, patient access, audit write/read, evidence repository, schema docs, metrics, and tests.
+- Work left: Frontend chatbot screen, real authentication, PostgreSQL persistence, database-backed immutable audit storage, and integration with the reviewed document approval workflow.
+- Blockers or risks: Local audit reading is acceptable for the demo but should be replaced by database-backed audit storage before any real PHI workflow.
+
+### 2026-05-08 - RAG Supervisor Demo Script
+
+- Changed: Added `docs/workflows/rag_demo_script.md`.
+- Why: Abdul needs a clear presentation path showing what was implemented, how to run it, what each result proves, and what remains.
+- Current status: The demo script covers tests, command-line chatbot demo, retrieval evaluation, API behavior, refusal behavior, access control, audit review, and final explanation.
+- Work done estimate: Abdul's RAG semester slice is now about 90% complete for the 30-40% milestone. The backend demo is presentation-ready.
+- Work left: Frontend chatbot screen, real authentication, PostgreSQL-backed evidence/audit storage, and integration with the document review workflow.
+- Blockers or risks: The demo script should be updated after frontend and database integration so the final presentation matches the actual running system.
+
+### 2026-05-08 - Review to RAG Evidence Builder
+
+- Changed: Added `backend/modules/review/evidence_builder.py`, `backend/tests/unit/test_review_evidence_builder.py`, `data/synthetic/reviewed_oasis_demo.json`, and `docs/api/review_to_rag_contract.md`.
+- Why: The RAG assistant must not use raw OCR directly. This builder defines the safe handoff where Asad's review workflow converts only clinician-approved fields into RAG evidence snippets.
+- Current status: Approved diagnosis, mobility, and safety fields become `EvidenceSnippet` objects with stable citation IDs and review metadata. An unapproved insulin/OCR field is ignored by tests.
+- Work done estimate: Abdul's RAG semester slice is now about 93% complete for the 30-40% milestone. Completed: RAG backend, approved-evidence filtering, review-to-RAG conversion, citations, refusal behavior, POC drafting, endpoints, demo RBAC, patient access, audit write/read, metrics, schema/docs, demo script, and tests.
+- Work left: Frontend chatbot screen, real auth instead of demo headers, actual PostgreSQL repository implementation, database-backed audit storage, and live connection to Asad's future review approval endpoint.
+- Blockers or risks: The builder is ready, but actual integration depends on the review API and database tables being implemented.
+
+### 2026-05-08 - PostgreSQL Evidence Repository Adapter
+
+- Changed: Added `PostgresEvidenceRepository` to `backend/modules/poc/evidence_repository.py` and unit coverage for DB row mapping.
+- Why: The RAG assistant needs a realistic database path beyond JSON demo files. The adapter can read approved snippets from the future `rag_evidence_snippets` PostgreSQL table without changing the RAG assistant.
+- Current status: The adapter uses a DB-API connection factory, filters `approved = TRUE`, optionally scopes by patient ID, maps metadata JSON, and returns `EvidenceSnippet` objects. It is tested with a fake DB cursor until real PostgreSQL is configured.
+- Work done estimate: Abdul's RAG semester slice is now about 95% complete for the 30-40% milestone. Completed: demo JSON store, review-to-RAG builder, PostgreSQL repository adapter, retrieval, citations, refusal behavior, POC drafting, endpoints, demo RBAC, patient access, audit write/read, metrics, schema/docs, demo script, and tests.
+- Work left: Frontend chatbot screen, real authentication, real PostgreSQL connection/migration execution, database-backed audit storage, and live integration with the review approval endpoint.
+- Blockers or risks: The adapter is implemented but cannot be used against a real database until database credentials, migrations, and a connection library such as `psycopg` are added.
+
+### 2026-05-08 - RAG PostgreSQL Migration Draft
+
+- Changed: Added `backend/api/migrations/001_rag_evidence_audit.sql` and added `psycopg[binary]` to `backend/requirements.txt`.
+- Why: The project now has executable PostgreSQL schema for approved RAG evidence and RAG audit events, not only documentation.
+- Current status: The migration creates `rag_evidence_snippets`, `rag_audit_events`, and supporting indexes for patient scoping, section filtering, metadata search, and audit review.
+- Work done estimate: Abdul's RAG semester slice is now about 96% complete for the backend/demo milestone. Completed: implementation, API, demo security, audit, metrics, review handoff, PostgreSQL adapter, and migration SQL.
+- Work left: Execute migrations against a real PostgreSQL instance, replace JSON/local audit storage with DB-backed repositories, add real authentication, and build the frontend chatbot screen.
+- Blockers or risks: The migration assumes base `users`, `patients`, `documents`, and `reviews` table relationships will be finalized later; foreign keys are intentionally not added yet to avoid blocking on unfinished schemas.
+
+### 2026-05-08 - Clinician RAG Chatbot Demo Screen
+
+- Changed: Added `apps/clinician-web/public/rag-chatbot-demo.html`, updated `apps/clinician-web/README.md`, enabled local demo CORS in `backend/api/app/main.py`, and updated `docs/workflows/rag_demo_script.md`.
+- Why: Abdul now has a visible clinician chatbot screen for supervisor demonstration, not only backend endpoints and command-line output.
+- Current status: The static demo screen can ask RAG questions, generate cited POC goals, display citations/confidence/refusal status, switch to reviewer role, and load recent RAG audit events.
+- Work done estimate: Abdul's RAG semester slice is complete for the 30-40% demo milestone. Completed: backend RAG, review-to-RAG safety boundary, FastAPI endpoints, demo RBAC/patient access, audit logging/review, metrics, PostgreSQL readiness, and a clinician chatbot UI demo.
+- Work left for production: Replace demo headers with real auth, execute PostgreSQL migrations, move JSON/local audit storage to database repositories, connect to Asad's live review approval endpoint, and rebuild the static screen as a proper Next.js page.
+- Blockers or risks: The UI is static because the Next.js app has not been scaffolded yet and the required `ui-ux-pro-max` skill is unavailable in this session. It is suitable for demo, not final production UI.
+
+### 2026-05-08 - RAG Demo Professionalization Pass
+
+- Changed: Hardened `apps/clinician-web/public/rag-chatbot-demo.html` by escaping backend-provided answer, citation, audit, and error text before inserting it into the page. Added `backend/tests/unit/test_static_demo_ui.py`.
+- Why: Even a demo UI should not normalize unsafe rendering patterns. Escaping backend content prevents accidental HTML/script rendering if future evidence text contains special characters.
+- Current status: The static demo remains lightweight but now follows a safer rendering pattern and has regression coverage.
+- Work done estimate: Abdul's RAG semester slice remains complete for the 30-40% demo milestone, with a more professional UI safety baseline.
+- Work left for production: Replace the static demo with a real Next.js implementation using the final design system, real auth, and database-backed RAG storage/audit.
+- Blockers or risks: The static page is still a demo artifact, not the final frontend architecture.

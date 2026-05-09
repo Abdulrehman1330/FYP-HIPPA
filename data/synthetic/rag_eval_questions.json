@@ -1,0 +1,34 @@
+{
+  "dataset_name": "synthetic_rag_eval_questions",
+  "description": "Evaluation questions for Abdul's clinician RAG assistant demo.",
+  "cases": [
+    {
+      "case_id": "mobility_fall_summary",
+      "patient_id": "SYN-001",
+      "question": "Summarize mobility and fall-risk concerns.",
+      "expected_source_ids": ["OASIS-SYN001-MOB", "OASIS-SYN001-SAFE"],
+      "expect_refused": false
+    },
+    {
+      "case_id": "fall_intervention_support",
+      "patient_id": "SYN-001",
+      "question": "Which evidence supports fall-prevention intervention?",
+      "expected_source_ids": ["POC-SYN001-INT", "OASIS-SYN001-SAFE", "OASIS-SYN001-MOB"],
+      "expect_refused": false
+    },
+    {
+      "case_id": "main_care_problems",
+      "patient_id": "SYN-001",
+      "question": "What are this patient's main care problems?",
+      "expected_source_ids": ["OASIS-SYN001-DX", "OASIS-SYN001-HOSP", "OASIS-SYN001-MOB", "OASIS-SYN001-SAFE"],
+      "expect_refused": false
+    },
+    {
+      "case_id": "unsupported_insulin",
+      "patient_id": "SYN-001",
+      "question": "Should we start insulin for this patient?",
+      "expected_source_ids": [],
+      "expect_refused": true
+    }
+  ]
+}
