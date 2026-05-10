@@ -1,0 +1,192 @@
+{
+  "info": {
+    "name": "FYP HIPAA Backend",
+    "description": "Backend API for HIPAA-compliant home-health document processing. Login first to populate the {{token}} variable; subsequent requests use it automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "token", "value": "" },
+    { "key": "documentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"asad@example.com\",\n  \"password\": \"Pass123!\",\n  \"firstName\": \"Asad\",\n  \"lastName\": \"Rasheed\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r?.data?.token) pm.collectionVariables.set('token', r.data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"asad@example.com\",\n  \"password\": \"Pass123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r?.data?.token) pm.collectionVariables.set('token', r.data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": "{{baseUrl}}/auth/me" }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Upload",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/documents/upload",
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": [] }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r?.data?.documentId) pm.collectionVariables.set('documentId', r.data.documentId);"
+                ]
+              }
+            }
+          ]
+        },
+        { "name": "List", "request": { "method": "GET", "url": "{{baseUrl}}/documents?page=1&limit=20" } },
+        { "name": "Get", "request": { "method": "GET", "url": "{{baseUrl}}/documents/{{documentId}}" } },
+        { "name": "Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/documents/{{documentId}}" } }
+      ]
+    },
+    {
+      "name": "Extraction",
+      "item": [
+        { "name": "Extract", "request": { "method": "POST", "url": "{{baseUrl}}/documents/{{documentId}}/extract" } },
+        { "name": "Get extraction", "request": { "method": "GET", "url": "{{baseUrl}}/documents/{{documentId}}/extraction" } }
+      ]
+    },
+    {
+      "name": "Review",
+      "item": [
+        { "name": "Queue", "request": { "method": "GET", "url": "{{baseUrl}}/review/queue" } },
+        { "name": "Detail", "request": { "method": "GET", "url": "{{baseUrl}}/review/{{documentId}}" } },
+        { "name": "Claim", "request": { "method": "POST", "url": "{{baseUrl}}/review/{{documentId}}/claim" } },
+        { "name": "Release", "request": { "method": "POST", "url": "{{baseUrl}}/review/{{documentId}}/release" } },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comments\": \"Looks good\"\n}" },
+            "url": "{{baseUrl}}/review/{{documentId}}/approve"
+          }
+        },
+        {
+          "name": "Edit & approve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"edits\": {\n    \"patient_name\": \"Alexander A. Hill\"\n  },\n  \"comments\": \"Corrected middle initial\"\n}"
+            },
+            "url": "{{baseUrl}}/review/{{documentId}}/edit"
+          }
+        },
+        {
+          "name": "Reject",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Wrong form type\"\n}" },
+            "url": "{{baseUrl}}/review/{{documentId}}/reject"
+          }
+        },
+        { "name": "Metrics", "request": { "method": "GET", "url": "{{baseUrl}}/review/{{documentId}}/metrics" } }
+      ]
+    },
+    {
+      "name": "Plan of Care",
+      "item": [
+        { "name": "Generate", "request": { "method": "POST", "url": "{{baseUrl}}/poc/generate/{{documentId}}" } },
+        { "name": "Latest", "request": { "method": "GET", "url": "{{baseUrl}}/poc/{{documentId}}" } },
+        { "name": "Versions", "request": { "method": "GET", "url": "{{baseUrl}}/poc/{{documentId}}/versions" } },
+        { "name": "Version N", "request": { "method": "GET", "url": "{{baseUrl}}/poc/{{documentId}}/versions/1" } },
+        {
+          "name": "Edit",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"edits\": {\n    \"patient_summary\": \"Updated summary text...\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/poc/{{documentId}}/edit"
+          }
+        },
+        { "name": "Approve", "request": { "method": "POST", "url": "{{baseUrl}}/poc/{{documentId}}/approve" } }
+      ]
+    },
+    {
+      "name": "Risk",
+      "item": [
+        { "name": "Predict", "request": { "method": "POST", "url": "{{baseUrl}}/risk/predict/{{documentId}}" } },
+        { "name": "Get score", "request": { "method": "GET", "url": "{{baseUrl}}/risk/{{documentId}}" } }
+      ]
+    }
+  ]
+}

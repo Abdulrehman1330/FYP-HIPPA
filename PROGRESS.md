@@ -879,3 +879,12 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Work done estimate: Merge/integration is complete locally; pending final merge commit and push after validation.
 - Work left: Finish merge commit, push `main`, then install backend API dependencies in a clean virtual environment if document upload routes need to be tested locally.
 - Blockers or risks: The current machine has SQLAlchemy 1.4, while the teammate scaffold requires SQLAlchemy 2.x. The app now degrades gracefully for document routes instead of crashing, but full document API testing requires installing `backend/api/requirements.txt`.
+
+### 2026-05-10 - Pulled Friend's Force-Updated GitHub Work
+
+- Changed: Fetched the latest GitHub `origin/main`, which had been force-updated, created backup branch `backup-before-friend-pull-2026-05-10`, and merged the new remote work into local `main`.
+- Why: A teammate pushed a large updated backend/frontend implementation and Abdul wanted the latest GitHub code pulled without losing local RAG work.
+- Current status: The merge introduced the teammate's Node/Prisma backend, OCR service, ML risk service, Vite frontend, Docker Compose setup, backend docs, and multitenant Prisma migrations. The local Python RAG assistant files were preserved.
+- Work done estimate: Pull/merge is complete locally after conflict resolution. RAG unit/API tests pass, and the new Vite frontend production build succeeds.
+- Work left: Commit the merge and decide whether to push the merged history back to GitHub, because the remote was force-updated.
+- Blockers or risks: The remote force-push removed some previously pushed Python API scaffold files. A backup branch exists before this merge in case rollback or comparison is needed.
