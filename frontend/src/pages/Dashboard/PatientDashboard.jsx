@@ -10,6 +10,19 @@ const SAFE_PATIENT_QUESTIONS = [
   "Can I change my insulin dose?",
 ];
 
+function readableCitationTitle(citation) {
+  return citation.title || String(citation.section || "Evidence")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function readableSnippet(snippet = "") {
+  return snippet
+    .replace(/^Approved extracted field '[^']+':\s*/i, "")
+    .replace(/^Approved\/generated Plan of Care section '[^']+':\s*/i, "")
+    .trim();
+}
+
 function buildDemoPatientAnswer(question, patient) {
   const normalized = question.toLowerCase();
   const unsafe = /(start|stop|change|increase|decrease|skip|double).*(med|medicine|medication|dose|insulin)/i.test(question);
@@ -46,7 +59,7 @@ function buildDemoPatientAnswer(question, patient) {
   return {
     refused: false,
     confidence: "medium",
-    answer: `Your approved care-plan information highlights your diagnoses, goals, interventions, and safety instructions. Use this summary for understanding your plan, and contact your care team for clinical decisions.`,
+    answer: `Simple answer:\nYour approved care-plan information highlights your goals, interventions, and safety instructions.\n\nWhat this means:\n- Follow the plan your care team approved.\n- Use the summary for understanding only.\n- Contact your care team for clinical decisions.`,
     citations,
     source: "demo fallback",
   };
@@ -216,15 +229,17 @@ const PatientDashboard = ({ user, goto }) => {
                     {chatAnswer.source || "backend RAG"}
                   </span>
                 </div>
-                <p style={{ fontSize: 12.5, lineHeight: 1.55, margin: 0 }}>{chatAnswer.answer}</p>
+                <p style={{ fontSize: 12.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>{chatAnswer.answer}</p>
                 {chatAnswer.reason && (
                   <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Reason: {chatAnswer.reason}</p>
                 )}
                 {chatAnswer.citations?.length > 0 && (
                   <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Sources used</div>
                     {chatAnswer.citations.slice(0, 3).map((citation, index) => (
                       <div key={`${citation.sourceId || citation.source_id || index}`} style={{ fontSize: 11.5, lineHeight: 1.45, padding: 8, borderRadius: 8, background: "rgba(255,255,255,0.45)", border: "1px solid var(--glass-border-soft)" }}>
-                        <strong>{citation.section || "Evidence"}:</strong> {citation.snippet}
+                        <div style={{ fontWeight: 600, marginBottom: 3 }}>{readableCitationTitle(citation)}</div>
+                        <div className="muted" style={{ color: "var(--ink-2)" }}>{readableSnippet(citation.snippet)}</div>
                       </div>
                     ))}
                   </div>

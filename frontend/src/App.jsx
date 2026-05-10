@@ -136,7 +136,7 @@ function App() {
             {screen === 'dashboard' && <Dashboard user={user} role={role} goto={goto} />}
             {screen === 'upload' && (role === 'CLINICIAN' || role === 'ADMIN') && <UploadScreen goto={goto} addToast={addToast} />}
             {screen === 'review' && (role === 'CLINICIAN' || role === 'ADMIN') && <ReviewScreen goto={goto} params={params} addToast={addToast} />}
-            {screen === 'poc' && <PocScreen goto={goto} params={params} addToast={addToast} />}
+            {screen === 'poc' && <PocScreen goto={goto} params={{ ...params, role }} addToast={addToast} />}
             {screen === 'risk' && <RiskScreen goto={goto} addToast={addToast} />}
             {screen === 'patients' && role !== 'PATIENT' && role !== 'SUPER_ADMIN' && <PatientsScreen goto={goto} role={role} addToast={addToast} />}
             {screen === 'patient' && <PatientScreen goto={goto} params={params} role={role} />}

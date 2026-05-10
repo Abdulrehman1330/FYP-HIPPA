@@ -898,3 +898,117 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Validation: `node --check` passed for the new backend RAG service, RAG route, and app registration. `npm run build` passed in `frontend`. The preserved Python RAG suite passed 23/23 tests.
 - Work left: Seed or create real approved patient documents so the Node RAG endpoint can return database-backed citations during a live demo, add Node automated tests when a backend test harness is introduced, and decide whether the final production assistant remains patient-facing or shifts back to clinician-facing only.
 - Blockers or risks: The required `ui-ux-pro-max` frontend skill is not available in this session, so the UI follows the existing dashboard design system instead. `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` was not available, so reusable notes could not be recorded there.
+
+### 2026-05-10 - Local Backend/Frontend Test Run
+
+- Changed: Started Docker Desktop, launched the local PostgreSQL container, installed Node backend dependencies, created a local ignored `backend/.env`, applied Prisma migrations, started the Node backend on port `3000`, started the Vite frontend on port `5173`, and inserted synthetic local RAG test data.
+- Why: Abdul needed to test the integrated patient RAG assistant end-to-end with the current frontend/backend stack.
+- Current status: Backend health works at `http://localhost:3000/api/v1/health`, frontend works at `http://127.0.0.1:5173/`, and the frontend proxy works at `http://127.0.0.1:5173/api/v1/health`. Patient login `patient.demo@fyp.local` / `Password123!` works locally.
+- Validation: Auth login succeeds. Authenticated `POST /api/v1/patient/rag/chat` returns cited care-plan evidence for fall-risk questions and refuses unsafe medication-dose questions.
+- Work left: Use the browser manually to log in and test the patient dashboard RAG card, because browser automation could not type into the email input due to a tooling limitation.
+- Blockers or risks: If Docker Desktop stops, PostgreSQL stops and the backend will fail or lose connection until Docker/Postgres is restarted. `GLOBAL_MEMORY.md` remains unavailable on this machine.
+
+### 2026-05-10 - Login Troubleshooting
+
+- Changed: Restarted the Node backend and Vite frontend after Abdul saw a browser console login error. Re-tested backend health, frontend proxy health, valid patient login, invalid-login handling, and direct `GET /api/v1/auth/login` behavior.
+- Why: The browser message `Cannot GET /api/v1/auth/login` can look like a backend failure, but it is expected when opening the login API URL directly because login is only a `POST` endpoint.
+- Current status: Backend is listening on port `3000`, frontend is listening on port `5173`, `POST /api/v1/auth/login` succeeds through both backend and frontend proxy, and invalid credentials return `401` instead of `500`.
+- Work left: Abdul should test only from `http://127.0.0.1:5173/` using the login form and the seeded local patient credentials.
+- Blockers or risks: Browser console `Permissions policy violation: unload is not allowed` is unrelated to the backend login API and can be ignored during this local test.
+
+### 2026-05-10 - Local CORS Origin Fix
+
+- Changed: Added `CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"` to local backend environment and documented the same value in `backend/.env.example`.
+- Why: The browser was testing the frontend from `http://127.0.0.1:5173`, while the backend default CORS allow-list covered `localhost:5173` but not `127.0.0.1:5173`. This caused browser-origin login requests to fail even though non-browser API tests worked.
+- Current status: Restarted the backend after updating CORS. Browser-style login requests with `Origin: http://127.0.0.1:5173` now return `200`.
+- Validation: Backend health, frontend proxy health, and `POST /api/v1/auth/login` through `127.0.0.1:5173` all pass.
+- Work left: Commit/push `backend/.env.example` if the team wants this setup fix shared.
+- Blockers or risks: Local `backend/.env` is ignored and must be recreated or copied from `.env.example` on other machines.
+
+### 2026-05-10 - Patient RAG Answer Readability
+
+- Changed: Updated `backend/src/services/rag.service.js` so patient-facing answers no longer include raw source IDs or technical labels inside the main response. Added simple bullet-style wording and cleaner citation titles/snippets. Updated `frontend/src/pages/Dashboard/PatientDashboard.jsx` so answers preserve line breaks and citations appear under a separate `Sources used` heading.
+- Why: The assistant was technically correct but difficult for a patient to understand because it mixed answer text with citation IDs such as `FIELD-...` and `POC-...`.
+- Current status: The assistant now returns a readable answer such as `Simple answer`, followed by bullets like `Mobility`, `Safety`, and `Care team support`. Citations remain available separately for evidence traceability.
+- Validation: Backend syntax check passed. Frontend production build passed. Authenticated RAG test for mobility returns a readable cited answer. Medication-dose question still refuses safely.
+- Work left: Optionally add a clinician-facing version with more technical citations, while keeping the patient-facing version simple.
+- Blockers or risks: The current response generator is deterministic and rule-based; it is safer for demo, but less flexible than a full LLM summarizer.
+
+### 2026-05-10 - LLM-Based Plan of Care Generator Hardening
+
+- Changed: Upgraded `backend/src/services/poc.service.js` into a clearer LLM-based Plan of Care generator. The generator now uses structured JSON prompts, evidence-only clinical guardrails, section-level citation enforcement, insufficient-evidence warnings, retry handling, and explicit generator metadata. The frontend POC screen now normalizes object/array section responses and shows generator mode plus missing-evidence warnings.
+- Why: Abdul wanted a real LLM-based POC generator while keeping the project safe, explainable, and student-testable. The feature must not hallucinate unsupported clinical content or crash when an API key/quota is unavailable.
+- Current status: If `OPENAI_API_KEY` is configured and valid, POC generation requests OpenAI using `OPENAI_MODEL`. If the key is blank or the LLM is unavailable, the backend automatically falls back to a deterministic cited draft so local testing continues without cost. All drafts remain clinician-review-only.
+- Validation: Backend syntax check passed. Frontend production build passed. Direct service test and HTTP `POST /api/v1/poc/generate/:documentId` both returned versioned POC drafts with citations and generator metadata.
+- Work left: Test true LLM output with a funded/valid API key. The current local key returned quota errors, so the endpoint correctly used deterministic fallback instead of failing with `500`.
+- Blockers or risks: Any real LLM use requires a valid paid/available API key and must use synthetic/de-identified data only during FYP testing.
+
+### 2026-05-11 - Gemini and Anthropic POC Provider Support
+
+- Changed: Extended `backend/src/services/poc.service.js` with a multi-provider LLM abstraction for `gemini`, `anthropic`, `openai`, `auto`, and `none`. Added Gemini REST calls through `generateContent`, Anthropic REST calls through `/v1/messages`, updated backend environment config, documented provider keys in `backend/.env.example`, updated API docs, and improved the frontend generator label for LLM/mixed/fallback modes.
+- Why: Abdul asked to support Gemini keys and Anthropic keys for the LLM-based Plan of Care generator, so the project is not locked to OpenAI and can use more student-friendly provider options.
+- Current status: `LLM_PROVIDER=auto` chooses the first available key in this order: Gemini, Anthropic, OpenAI. Provider keys remain backend-only. If the chosen provider fails for any section, that section falls back to deterministic cited generation instead of crashing the endpoint.
+- Validation: Backend syntax checks passed. Frontend production build passed. Fallback-only generation with `LLM_PROVIDER=none` returned a complete 7-section POC. HTTP POC generation with the current local environment selected Gemini and returned a mixed result with Gemini metadata plus fallback sections.
+- Work left: Test Anthropic with a real `ANTHROPIC_API_KEY`; no Anthropic key was available locally during this session.
+- Blockers or risks: Real Gemini/Anthropic/OpenAI use depends on valid API keys, provider quota, and synthetic/de-identified data only.
+
+### 2026-05-11 - Anthropic Local Provider Selection
+
+- Changed: Set local ignored `backend/.env` to `LLM_PROVIDER="anthropic"` and added the Anthropic model/version variables locally.
+- Why: Abdul wants to test the Plan of Care generator with an Anthropic key.
+- Current status: The key value was intentionally not written by the assistant to avoid duplicating a secret into command history or logs. Abdul should paste the key directly into `ANTHROPIC_API_KEY=""` in local `backend/.env`.
+- Work left: After the key is pasted, restart the backend and run `POST /api/v1/poc/generate/:documentId` to confirm Anthropic generation.
+- Blockers or risks: The key was pasted into chat, so it should be treated as exposed and rotated after testing.
+
+### 2026-05-11 - Patient Read-Only Plan of Care View
+
+- Changed: Added patient self-service endpoint `GET /api/v1/me/poc`, backed by `caseload.selfLatestPoc`, to return the logged-in patient's latest generated Plan of Care. Updated `pocService.getMyPoc()`, passed role context into `PocScreen`, and made the POC screen read-only for patients.
+- Why: Abdul noticed the LLM POC generator was available for clinicians but not properly exposed to patients. Patients should be able to view their generated care plan, but they must not generate, edit, or sign clinical drafts.
+- Current status: Patient users can open `My care plan` and see their latest generated POC in a read-only format. Clinicians/admins still keep generation, editing, and signing controls.
+- Validation: Backend route/service syntax checks passed. Frontend production build passed. Restarted backend and verified `GET /api/v1/me/poc` with the local patient account returns the latest POC version.
+- Work left: Optionally hide internal generator metadata from patient display if the supervisor wants a simpler patient portal.
+- Blockers or risks: Patient view currently returns the latest generated POC, including draft status. For production, the endpoint should probably return only clinician-approved POC versions.
+
+### 2026-05-11 - Patient POC Text Simplification
+
+- Changed: Added patient-only Plan of Care text simplification in `frontend/src/pages/PlanOfCare/PocScreen.jsx`. The patient read-only view now derives a simple summary from section citations and hides raw draft phrases such as `draft based on approved evidence`, citation IDs, and clinician-review wording.
+- Why: The patient view was technically read-only but still displayed the same clinical/fallback draft text, which was difficult to understand and did not visibly change for patients.
+- Current status: Clinicians still see and edit the original clinical draft. Patients see simplified text with `Simple summary` and `What this means` guidance.
+- Validation: Frontend production build passed.
+- Work left: Optionally move the simplification to the backend later if the team wants a dedicated patient-facing POC API response.
+- Blockers or risks: This is a display-layer simplification; the underlying stored POC remains the clinician draft for audit and editing.
+
+### 2026-05-11 - Anthropic Provider Failure Diagnosed
+
+- Changed: Added provider error metadata to fallback POC sections so LLM failures are visible without exposing secret keys.
+- Why: The clinician POC text was not changing because every section was falling back to deterministic generation. The team needed to know whether the issue was code, model name, auth, or provider quota.
+- Current status: Anthropic requests are reaching the provider, but Anthropic returns `invalid_request_error`: credit balance is too low to access the API. Because of this, `llmSectionCount` remains `0` and generated clinical text stays deterministic fallback text.
+- Validation: Regenerated POC after backend restart and confirmed section metadata includes provider error status `400` with low-credit message.
+- Work left: Add Anthropic credits, rotate/use a funded Anthropic key, or switch `LLM_PROVIDER` to a working Gemini/OpenAI key.
+- Blockers or risks: Until a provider key with available credits is configured, clinical POC text will not be LLM-generated.
+
+### 2026-05-11 - Gemini Local Provider Prepared
+
+- Changed: Switched local ignored `backend/.env` from `LLM_PROVIDER="anthropic"` to `LLM_PROVIDER="gemini"` and added Gemini model/key variables.
+- Why: Abdul wants to test POC generation with a Gemini API key after Anthropic failed due to low credit balance.
+- Current status: Gemini provider is selected locally, but the actual key value was not written by the assistant to avoid duplicating a secret into command/tool logs. Abdul should paste the key directly into `GEMINI_API_KEY=""` in `backend/.env`.
+- Work left: After the key is pasted, restart backend and regenerate POC to confirm `generator.provider = "gemini"` and `llmSectionCount > 0`.
+- Blockers or risks: The Gemini key was pasted into chat, so it should be treated as exposed and rotated after testing.
+
+### 2026-05-11 - Gemini POC Generation Verified
+
+- Changed: Restarted the backend with local Gemini provider settings and improved `parseJsonSection` so nested JSON returned by Gemini is unwrapped into plain section content.
+- Why: Gemini was active, but one response shape returned JSON text inside the `content` field, causing the clinical section to display JSON-like text instead of readable clinical prose.
+- Current status: Gemini is generating POC sections. Latest test returned `provider: gemini`, `model: gemini-2.5-flash`, `llmSectionCount: 6`, and `fallbackSectionCount: 1`. Patient Summary now reads as normal clinical text.
+- Validation: Backend syntax passed. HTTP `POST /api/v1/poc/generate/:documentId` successfully generated Gemini-backed content.
+- Work left: Improve evidence coverage so fewer sections need fallback, especially sections whose required fields are missing from the synthetic OASIS data.
+- Blockers or risks: Gemini key was pasted in chat and should be rotated after testing.
+
+### 2026-05-11 - Clinician POC Sidebar Regeneration Fixed
+
+- Changed: Added backend endpoints `POST /api/v1/poc/generate-latest` and `GET /api/v1/poc/latest` so the clinician Plan of Care page can work even when opened from the sidebar without a `documentId`. Updated `frontend/src/pages/PlanOfCare/PocScreen.jsx` to load/generate real backend POC data instead of mock sections in that no-document route. Updated `frontend/src/services/poc.service.js` and `backend/docs/API.md`.
+- Why: The clinical text fields were not changing because the sidebar POC screen had `docId = null`, so the frontend used mock text and mock regeneration instead of calling the LLM-backed backend.
+- Current status: Sidebar POC now loads the latest accessible generated POC and `Regenerate all` calls the backend using the latest approved/POC/risk-scored document in the clinician/admin caseload. POC generation now requests all sections in one LLM call to reduce Gemini free-tier quota usage and handles provider retry-after messages before falling back.
+- Validation: Backend syntax checks passed. Frontend production build passed. Backend restarted successfully and health check is healthy. Authenticated clinician tests confirmed `GET /poc/latest` and `POST /poc/generate-latest` use document `d2b72703-fe13-4a6d-b424-cd0976285da2` and create new POC versions.
+- Work left: Re-test after Gemini free-tier quota resets or use a fresh/funded provider key so generated fields show LLM prose instead of deterministic fallback text.
+- Blockers or risks: Gemini currently returns HTTP `429` free-tier quota exceeded, so the backend falls back safely and the text may still look unchanged until quota/key availability is fixed. The required global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` could not be updated because the `D:` drive is not available in this environment.

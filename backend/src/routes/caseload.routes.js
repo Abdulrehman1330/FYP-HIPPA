@@ -52,4 +52,10 @@ router.get("/me/documents", ...patientGuard, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/me/poc", ...patientGuard, async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await caseload.selfLatestPoc(req.user) });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

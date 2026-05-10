@@ -4,8 +4,9 @@ const { logAction } = require("./audit.service");
 
 const STOPWORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "can", "do", "for", "from",
-  "how", "i", "in", "is", "it", "me", "my", "of", "on", "or", "should",
-  "the", "this", "to", "what", "when", "which", "with", "you",
+  "about", "does", "explain", "how", "i", "in", "is", "it", "me", "my", "of",
+  "on", "or", "say", "says", "should", "tell", "the", "this", "to", "what",
+  "when", "which", "with", "you", "your",
 ]);
 
 const UNSAFE_PATIENT_PATTERNS = [
@@ -24,6 +25,12 @@ function tokenize(text) {
 
 function hasUnsafePatientIntent(question) {
   return UNSAFE_PATIENT_PATTERNS.some((pattern) => pattern.test(question));
+}
+
+function humanizeSection(section) {
+  return String(section || "Evidence")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function normalizeSections(sections) {
@@ -45,12 +52,13 @@ function addExtractedFieldEvidence(evidence, document) {
       patientId: document.patientId,
       documentId: document.id,
       section: field.fieldName,
-      text: `Approved extracted field '${field.fieldName}': ${field.fieldValue}`,
+      text: field.fieldValue,
       sourceType: "approved_extracted_field",
       metadata: {
         confidence: field.confidence,
         sourceSnippet: field.sourceSnippet,
         filename: document.filename,
+        title: humanizeSection(field.fieldName),
       },
     });
   }
@@ -67,13 +75,14 @@ function addPocEvidence(evidence, document) {
       patientId: document.patientId,
       documentId: document.id,
       section: section.section || section.title,
-      text: `Approved/generated Plan of Care section '${section.title}': ${section.content}`,
+      text: section.content,
       sourceType: "generated_poc_section",
       metadata: {
         pocId: latestPoc.id,
         version: latestPoc.version,
         status: latestPoc.status,
         citations: section.citations,
+        title: section.title,
       },
     });
   }
@@ -126,21 +135,47 @@ function retrieveEvidence(question, evidence, limit = 4) {
 
 function formatPatientAnswer(question, matches) {
   const normalized = question.toLowerCase();
-  const snippets = matches.map((match) => `[${match.sourceId}] ${match.text}`).join(" ");
+  const bullets = [];
+
+  for (const match of matches.slice(0, 4)) {
+    const section = String(match.section || "").toLowerCase();
+    const text = match.text.replace(/\s+/g, " ").trim();
+    if (!text) continue;
+
+    if (section.includes("mobility")) {
+      bullets.push(`Mobility: ${text}`);
+    } else if (section.includes("fall") || section.includes("safety")) {
+      bullets.push(`Safety: ${text}`);
+    } else if (section.includes("goal")) {
+      bullets.push(`Goal: ${text}`);
+    } else if (section.includes("intervention")) {
+      bullets.push(`Care team support: ${text}`);
+    } else if (section.includes("medication")) {
+      bullets.push(`Medication note: ${text}`);
+    } else if (section.includes("diagnosis")) {
+      bullets.push(`Main condition: ${text}`);
+    } else {
+      bullets.push(`${humanizeSection(match.section)}: ${text}`);
+    }
+  }
+
+  const summary = bullets.length
+    ? bullets.map((bullet) => `- ${bullet}`).join("\n")
+    : "- I found approved care-plan evidence, but it needs clinician review for a clearer explanation.";
 
   if (normalized.includes("risk")) {
-    return `Your risk information is based on your reviewed care record and care-plan evidence. ${snippets} If you are worried about symptoms, contact your care team.`;
+    return `Simple answer:\nYour risk score is based on reviewed information in your care record. It helps your care team watch for problems early.\n\nWhat the evidence says:\n${summary}\n\nIf you feel worse or are worried about symptoms, contact your care team.`;
   }
 
   if (normalized.includes("medication") || normalized.includes("medicine") || normalized.includes("meds")) {
-    return `I can summarize medication-related information that is already in your approved record, but I cannot recommend medication changes. ${snippets}`;
+    return `Simple answer:\nI can explain medication information already written in your approved care record, but I cannot recommend medication changes.\n\nWhat the evidence says:\n${summary}\n\nPlease ask your clinician before changing any medicine or dose.`;
   }
 
   if (normalized.includes("task") || normalized.includes("today") || normalized.includes("plan")) {
-    return `Here is what your approved care information says about your plan. ${snippets}`;
+    return `Simple answer:\nHere is the most important care-plan information I found.\n\nWhat the evidence says:\n${summary}\n\nUse this as a summary only. Your care team should make clinical decisions.`;
   }
 
-  return `Based on your approved care information, I found the following relevant evidence. ${snippets}`;
+  return `Simple answer:\nHere is the approved care-plan information that matches your question.\n\nWhat the evidence says:\n${summary}\n\nFor medical decisions, ask your care team.`;
 }
 
 function refusedAnswer(question, reason) {
@@ -182,6 +217,7 @@ async function answerPatientQuestion({ patientId, question, userId }) {
     documentId: match.documentId,
     section: match.section,
     snippet: match.text,
+    title: match.metadata?.title || humanizeSection(match.section),
     score: Number(match.score.toFixed(3)),
     sourceType: match.sourceType,
   }));
