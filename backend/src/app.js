@@ -11,6 +11,7 @@ const extractionRoutes = require("./routes/extraction.routes");
 const reviewRoutes = require("./routes/review.routes");
 const pocRoutes = require("./routes/poc.routes");
 const riskRoutes = require("./routes/risk.routes");
+const ragRoutes = require("./routes/rag.routes");
 const patientsRoutes = require("./routes/patients.routes"); // legacy — kept for backward compat
 const superRoutes = require("./routes/super.routes");
 const adminRoutes = require("./routes/admin.routes");
@@ -69,6 +70,7 @@ app.use("/api/v1", documentRoutes);
 app.use("/api/v1", extractionRoutes);
 app.use("/api/v1", reviewRoutes);
 app.use("/api/v1", pocRoutes);
+app.use("/api/v1", ragRoutes);
 app.use("/api/v1", riskRoutes);
 
 // Legacy /patients — kept temporarily for the old "Add patient" flow

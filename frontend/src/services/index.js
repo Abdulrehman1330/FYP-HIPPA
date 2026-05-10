@@ -5,5 +5,6 @@ export { default as reviewService } from './review.service';
 export { default as pocService } from './poc.service';
 export { default as riskService } from './risk.service';
 export { default as patientService } from './patient.service';
+export { default as ragService } from './rag.service';
 export { default as superService } from './super.service';
 export { default as adminService } from './admin.service';

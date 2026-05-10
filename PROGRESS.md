@@ -888,3 +888,13 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Work done estimate: Pull/merge is complete locally after conflict resolution. RAG unit/API tests pass, and the new Vite frontend production build succeeds.
 - Work left: Commit the merge and decide whether to push the merged history back to GitHub, because the remote was force-updated.
 - Blockers or risks: The remote force-push removed some previously pushed Python API scaffold files. A backup branch exists before this merge in case rollback or comparison is needed.
+
+### 2026-05-10 - Patient Dashboard RAG Integration
+
+- Changed: Integrated a patient-facing RAG assistant into the pulled Node/Prisma backend and Vite frontend. Added `backend/src/services/rag.service.js`, `backend/src/routes/rag.routes.js`, registered the route in `backend/src/app.js`, added `frontend/src/services/rag.service.js`, exported it from `frontend/src/services/index.js`, and added the care-plan assistant card to `frontend/src/pages/Dashboard/PatientDashboard.jsx`.
+- Why: Abdul's RAG work needed to run inside the current teammate frontend/backend stack instead of remaining only as a separate Python/demo module.
+- Current status: Patients can ask care-plan questions from the dashboard. The frontend calls `POST /api/v1/patient/rag/chat`; clinicians/admins can call `POST /api/v1/patients/:patientId/rag/chat`. Backend answers are built only from approved extracted fields and generated POC sections, include citations, and refuse medication-change, diagnosis, or insufficient-evidence questions. The dashboard has a safe demo fallback if the backend/database is not running.
+- Work done estimate: RAG is now integrated into the current application stack for demo use. Abdul's RAG frontend/backend integration is about 85% complete for the semester milestone.
+- Validation: `node --check` passed for the new backend RAG service, RAG route, and app registration. `npm run build` passed in `frontend`. The preserved Python RAG suite passed 23/23 tests.
+- Work left: Seed or create real approved patient documents so the Node RAG endpoint can return database-backed citations during a live demo, add Node automated tests when a backend test harness is introduced, and decide whether the final production assistant remains patient-facing or shifts back to clinician-facing only.
+- Blockers or risks: The required `ui-ux-pro-max` frontend skill is not available in this session, so the UI follows the existing dashboard design system instead. `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` was not available, so reusable notes could not be recorded there.
