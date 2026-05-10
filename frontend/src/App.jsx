@@ -3,6 +3,7 @@ import { GlassCard, Toast } from './components/ui';
 import { Sidebar, Topbar } from './components/layout';
 import { NAV } from './data';
 import { useAuth } from './context';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 import { AuthScreen } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
@@ -14,32 +15,42 @@ import { PatientsScreen } from './pages/Patients';
 import { PatientScreen } from './pages/PatientDetail';
 import { AuditFullScreen } from './pages/AuditLog';
 import { MobileShowcase } from './pages/MobileShowcase';
+import { ClinicsScreen } from './pages/SuperClinics';
+import { UsersScreen } from './pages/AdminUsers';
 
-// Map backend roles to frontend display roles
-const ROLE_MAP = {
-  ADMIN: 'ADMIN',
-  CLINICIAN: 'DOCTOR',
-  VIEWER: 'PATIENT',
-};
-
+// Backend roles map directly to display roles now (no remapping after multi-tenant migration)
 const ROLE_TITLES = {
-  ADMIN: 'Compliance lead',
-  DOCTOR: 'MD · Internal medicine',
+  SUPER_ADMIN: 'Platform administrator',
+  ADMIN: 'Clinic administrator',
+  CLINICIAN: 'Clinician',
+  DOCTOR: 'Doctor',
   PATIENT: 'Patient · personal portal',
 };
 
-function mapUser(backendUser) {
+function adaptUser(backendUser) {
   if (!backendUser) return null;
-  const displayRole = ROLE_MAP[backendUser.role] || backendUser.role;
   return {
     id: backendUser.id,
     name: `${backendUser.firstName || ''} ${backendUser.lastName || ''}`.trim() || backendUser.email,
     email: backendUser.email,
-    role: displayRole,
-    backendRole: backendUser.role,
-    title: ROLE_TITLES[displayRole] || backendUser.role,
-    patientId: backendUser.patientId || null,
+    role: backendUser.role,
+    title: ROLE_TITLES[backendUser.role] || backendUser.role,
+    clinicId: backendUser.clinicId,
+    clinicName: backendUser.clinic?.name || null,
+    mustChangePassword: backendUser.mustChangePassword,
+    patientId: backendUser.id,
   };
+}
+
+function defaultScreenFor(role) {
+  switch (role) {
+    case 'SUPER_ADMIN': return 'clinics';
+    case 'ADMIN': return 'users';
+    case 'CLINICIAN':
+    case 'DOCTOR': return 'dashboard';
+    case 'PATIENT': return 'dashboard';
+    default: return 'dashboard';
+  }
 }
 
 function App() {
@@ -47,30 +58,25 @@ function App() {
   const [screen, setScreen] = useState('dashboard');
   const [params, setParams] = useState({});
   const [toast, setToast] = useState(null);
+  const [voluntaryPwdChange, setVoluntaryPwdChange] = useState(false);
 
-  const user = mapUser(authUser);
-  const role = user?.role || 'DOCTOR';
+  const user = adaptUser(authUser);
+  const role = user?.role || 'CLINICIAN';
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'aurora';
   }, []);
 
-  // Role-based screen gating
+  // After login, jump to a sensible default screen for the role
   useEffect(() => {
-    if (!user) return;
-    if (role === 'PATIENT') {
-      const allowed = ['dashboard', 'poc', 'risk', 'patient', 'mobile'];
-      if (!allowed.includes(screen)) setScreen('dashboard');
-    } else {
-      if (screen === 'audit' && role !== 'ADMIN') setScreen('dashboard');
-    }
-  }, [role]);
+    if (user) setScreen(defaultScreenFor(user.role));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const goto = (key, p = {}) => { setScreen(key); setParams(p); };
   const addToast = (t) => setToast(t);
   const allowedNav = NAV.filter(n => n.roles.includes(role));
 
-  // Show loading spinner while restoring session
   if (loading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}>
@@ -87,14 +93,14 @@ function App() {
   if (!isAuthenticated) {
     return (
       <>
-        <AuthScreen onLogin={() => {
-          // Auth context handles state, just go to dashboard
-          setScreen('dashboard');
-        }} />
+        <AuthScreen onLogin={() => setScreen(defaultScreenFor(authUser?.role || 'CLINICIAN'))} />
         <Toast toast={toast} onDismiss={() => setToast(null)} />
       </>
     );
   }
+
+  // Forced first-login password change overrides everything
+  const forcePwdChange = !!user?.mustChangePassword;
 
   return (
     <>
@@ -102,36 +108,55 @@ function App() {
       <div className="app density-balanced">
         <GlassCard strong className="brand">
           <div className="brand-mark">H</div>
-          <div className="brand-name">Hippa<b>Clinical</b></div>
+          <div className="brand-name">Hippa<b>Health</b></div>
         </GlassCard>
 
-        <Topbar user={user} role={role} />
+        <Topbar user={user} role={role} onChangePassword={() => setVoluntaryPwdChange(true)} onSignOut={logout} />
 
         <Sidebar
           allowedNav={allowedNav}
           screen={screen}
           goto={goto}
           user={user}
-          showMobile={true}
+          showMobile={role === 'PATIENT'}
           onSignOut={logout}
         />
 
         <GlassCard strong className="main">
           <div className="main-scroll">
+            {/* SUPER_ADMIN screens */}
+            {screen === 'clinics' && role === 'SUPER_ADMIN' && <ClinicsScreen goto={goto} addToast={addToast} />}
+            {screen === 'platformAudit' && role === 'SUPER_ADMIN' && <AuditFullScreen scope="platform" />}
+
+            {/* ADMIN screens */}
+            {screen === 'users' && role === 'ADMIN' && <UsersScreen addToast={addToast} />}
+            {screen === 'audit' && role === 'ADMIN' && <AuditFullScreen scope="clinic" />}
+
+            {/* Workspace */}
             {screen === 'dashboard' && <Dashboard user={user} role={role} goto={goto} />}
-            {screen === 'upload'    && <UploadScreen goto={goto} addToast={addToast} />}
-            {screen === 'review'    && <ReviewScreen goto={goto} params={params} addToast={addToast} />}
-            {screen === 'poc'       && <PocScreen goto={goto} params={params} addToast={addToast} />}
-            {screen === 'risk'      && <RiskScreen goto={goto} addToast={addToast} />}
-            {screen === 'patients'  && role !== 'PATIENT' && <PatientsScreen goto={goto} />}
-            {screen === 'patient'   && <PatientScreen goto={goto} params={params} role={role} />}
-            {screen === 'mobile'    && <MobileShowcase goto={goto} />}
-            {screen === 'audit'     && <AuditFullScreen />}
+            {screen === 'upload' && (role === 'CLINICIAN' || role === 'ADMIN') && <UploadScreen goto={goto} addToast={addToast} />}
+            {screen === 'review' && (role === 'CLINICIAN' || role === 'ADMIN') && <ReviewScreen goto={goto} params={params} addToast={addToast} />}
+            {screen === 'poc' && <PocScreen goto={goto} params={params} addToast={addToast} />}
+            {screen === 'risk' && <RiskScreen goto={goto} addToast={addToast} />}
+            {screen === 'patients' && role !== 'PATIENT' && role !== 'SUPER_ADMIN' && <PatientsScreen goto={goto} role={role} addToast={addToast} />}
+            {screen === 'patient' && <PatientScreen goto={goto} params={params} role={role} />}
+            {screen === 'mobile' && <MobileShowcase goto={goto} />}
           </div>
         </GlassCard>
       </div>
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
+
+      {/* Forced first-login password change */}
+      <ChangePasswordModal
+        forced={forcePwdChange}
+        open={forcePwdChange || voluntaryPwdChange}
+        onClose={() => setVoluntaryPwdChange(false)}
+        onSuccess={() => {
+          setVoluntaryPwdChange(false);
+          addToast({ kind: 'ok', text: 'Password updated' });
+        }}
+      />
     </>
   );
 }

@@ -99,17 +99,27 @@ export const ROLE_USERS = {
 };
 
 export const NAV = [
-  { key: "dashboard", label: "Dashboard",     icon: "dashboard", roles: ["ADMIN","DOCTOR"], section: "Clinical" },
-  { key: "upload",    label: "Upload",         icon: "upload",    roles: ["ADMIN","DOCTOR"], section: "Clinical" },
-  { key: "review",    label: "Review queue",   icon: "review",    roles: ["ADMIN","DOCTOR"], section: "Clinical", count: 14 },
-  { key: "poc",       label: "Plan of care",   icon: "poc",       roles: ["ADMIN","DOCTOR"], section: "Clinical" },
-  { key: "risk",      label: "Risk scoring",   icon: "risk",      roles: ["ADMIN","DOCTOR"], section: "Clinical" },
-  { key: "patients",  label: "All patients",   icon: "patients",  roles: ["ADMIN","DOCTOR"], section: "Clinical" },
-  { key: "audit",     label: "Audit log",      icon: "audit",     roles: ["ADMIN"],          section: "Oversight" },
-  { key: "dashboard", label: "My overview",    icon: "dashboard", roles: ["PATIENT"],        section: "My health" },
-  { key: "poc",       label: "My care plan",   icon: "poc",       roles: ["PATIENT"],        section: "My health" },
-  { key: "risk",      label: "My risk score",  icon: "risk",      roles: ["PATIENT"],        section: "My health" },
-  { key: "patient",   label: "My record",      icon: "patients",  roles: ["PATIENT"],        section: "My health" },
+  // === SUPER_ADMIN (platform) ===
+  { key: "clinics",      label: "Clinics",        icon: "patients",  roles: ["SUPER_ADMIN"],            section: "Platform" },
+  { key: "platformAudit",label: "Platform audit", icon: "audit",     roles: ["SUPER_ADMIN"],            section: "Platform" },
+
+  // === ADMIN (clinic management) ===
+  { key: "users",        label: "Users",          icon: "patients",  roles: ["ADMIN"],                  section: "Administration" },
+  { key: "audit",        label: "Audit log",      icon: "audit",     roles: ["ADMIN"],                  section: "Administration" },
+
+  // === Workspace — clinical staff ===
+  { key: "dashboard",    label: "Dashboard",      icon: "dashboard", roles: ["ADMIN","CLINICIAN","DOCTOR"], section: "Workspace" },
+  { key: "upload",       label: "Upload",         icon: "upload",    roles: ["ADMIN","CLINICIAN"],          section: "Workspace" },
+  { key: "review",       label: "Review queue",   icon: "review",    roles: ["ADMIN","CLINICIAN"],          section: "Workspace" },
+  { key: "patients",     label: "Patients",       icon: "patients",  roles: ["ADMIN","CLINICIAN","DOCTOR"], section: "Workspace" },
+  { key: "poc",          label: "Plan of care",   icon: "poc",       roles: ["ADMIN","CLINICIAN","DOCTOR"], section: "Workspace" },
+  { key: "risk",         label: "Risk scoring",   icon: "risk",      roles: ["ADMIN","CLINICIAN","DOCTOR"], section: "Workspace" },
+
+  // === PATIENT — self-service ===
+  { key: "dashboard",    label: "My overview",    icon: "dashboard", roles: ["PATIENT"],                section: "My health" },
+  { key: "poc",          label: "My care plan",   icon: "poc",       roles: ["PATIENT"],                section: "My health" },
+  { key: "risk",         label: "My risk score",  icon: "risk",      roles: ["PATIENT"],                section: "My health" },
+  { key: "patient",      label: "My record",      icon: "patients",  roles: ["PATIENT"],                section: "My health" },
 ];
 
 export { PATIENTS, FIELDS_TEMPLATE, DOCS, ACTIVITY, AUDIT_TRAIL, POC_SECTIONS, RISK_FACTORS, KPIS };

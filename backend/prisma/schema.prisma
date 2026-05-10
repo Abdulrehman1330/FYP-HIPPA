@@ -7,10 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// ENUMS
+// ============================================================
+
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   CLINICIAN
-  VIEWER
+  DOCTOR
+  PATIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ClinicStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
 }
 
 enum DocumentStatus {
@@ -22,6 +39,7 @@ enum DocumentStatus {
   REJECTED
   POC_GENERATED
   RISK_SCORED
+  FAILED
 }
 
 enum DocumentType {
@@ -36,38 +54,119 @@ enum ReviewActionType {
   REJECT
 }
 
+// ============================================================
+// TENANTS
+// ============================================================
+
+model Clinic {
+  id        String       @id @default(uuid())
+  name      String
+  status    ClinicStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  users     User[]
+  patients  Patient[]
+  documents Document[]
+  auditLogs AuditLog[]
+
+  @@map("clinics")
+}
+
+// ============================================================
+// USERS
+// ============================================================
+
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      UserRole @default(CLINICIAN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  firstName          String
+  lastName           String
+  role               UserRole   @default(CLINICIAN)
+  status             UserStatus @default(ACTIVE)
+  mustChangePassword Boolean    @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  // Tenancy — null only for SUPER_ADMIN
+  clinicId String?
+  clinic   Clinic? @relation(fields: [clinicId], references: [id])
+
+  // Reverse relations
+  patientProfile      Patient?  @relation("PatientUser")
+  patientsAsDoctor    Patient[] @relation("PatientPrimaryDoctor")
+  patientsAsClinician Patient[] @relation("PatientPrimaryClinician")
 
   documents          Document[]
+  claimedDocuments   Document[]     @relation("DocumentReviewer")
   reviewActions      ReviewAction[]
   auditLogs          AuditLog[]
-  claimedDocuments   Document[]     @relation("DocumentReviewer")
 
+  @@index([clinicId])
+  @@index([role])
   @@map("users")
 }
 
+// ============================================================
+// PATIENTS
+// ============================================================
+
+model Patient {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation("PatientUser", fields: [userId], references: [id])
+
+  clinicId     String
+  clinic       Clinic   @relation(fields: [clinicId], references: [id])
+
+  mrn          String
+  dateOfBirth  DateTime
+  enrolledAt   DateTime @default(now())
+
+  primaryDoctorId    String
+  primaryDoctor      User    @relation("PatientPrimaryDoctor", fields: [primaryDoctorId], references: [id])
+
+  primaryClinicianId String
+  primaryClinician   User    @relation("PatientPrimaryClinician", fields: [primaryClinicianId], references: [id])
+
+  documents     Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clinicId, mrn])
+  @@index([clinicId])
+  @@index([primaryDoctorId])
+  @@index([primaryClinicianId])
+  @@map("patients")
+}
+
+// ============================================================
+// DOCUMENTS
+// ============================================================
+
 model Document {
-  id                  String         @id @default(uuid())
-  userId              String
-  filename            String
-  fileType            DocumentType   @default(OTHER)
-  status              DocumentStatus @default(UPLOADED)
-  storagePath         String
-  sizeBytes           Int
-  contentType         String
-  uploadedAt          DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  reviewClaimedById   String?
-  reviewClaimedAt     DateTime?
-  reviewCompletedAt   DateTime?
+  id                String         @id @default(uuid())
+  userId            String         // uploader
+  filename          String
+  fileType          DocumentType   @default(OTHER)
+  status            DocumentStatus @default(UPLOADED)
+  storagePath       String
+  sizeBytes         Int
+  contentType       String
+  uploadedAt        DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  reviewClaimedById String?
+  reviewClaimedAt   DateTime?
+  reviewCompletedAt DateTime?
+
+  // Tenancy + patient link — nullable now, NOT NULL after Phase 3
+  clinicId  String?
+  clinic    Clinic?  @relation(fields: [clinicId], references: [id])
+  patientId String?
+  patient   Patient? @relation(fields: [patientId], references: [id])
 
   user            User             @relation(fields: [userId], references: [id])
   reviewClaimedBy User?            @relation("DocumentReviewer", fields: [reviewClaimedById], references: [id])
@@ -80,6 +179,8 @@ model Document {
   @@index([userId])
   @@index([status])
   @@index([reviewClaimedById])
+  @@index([clinicId])
+  @@index([patientId])
   @@map("documents")
 }
 
@@ -126,8 +227,8 @@ model GeneratedPoc {
   approvedById    String?
   approvedAt      DateTime?
 
-  document      Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  parentVersion GeneratedPoc? @relation("PocLineage", fields: [parentVersionId], references: [id])
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parentVersion GeneratedPoc?  @relation("PocLineage", fields: [parentVersionId], references: [id])
   childVersions GeneratedPoc[] @relation("PocLineage")
 
   @@unique([documentId, version])
@@ -158,11 +259,17 @@ model AuditLog {
   userAgent  String?
   timestamp  DateTime @default(now())
 
+  // Nullable — null only for SUPER_ADMIN events
+  clinicId String?
+  clinic   Clinic? @relation(fields: [clinicId], references: [id])
+
   user     User?     @relation(fields: [userId], references: [id])
   document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([documentId])
   @@index([timestamp])
+  @@index([clinicId])
+  @@index([action])
   @@map("audit_logs")
 }

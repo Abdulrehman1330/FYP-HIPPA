@@ -4,7 +4,7 @@ const axios = require("axios");
 const FormData = require("form-data");
 const path = require("path");
 const prisma = require("../config/database");
-const { authMiddleware } = require("../middleware/auth.middleware");
+const { authMiddleware, requireRole, assertCaseload } = require("../middleware/auth.middleware");
 const { AppError } = require("../middleware/error.middleware");
 const logger = require("../utils/logger");
 
@@ -27,37 +27,25 @@ async function callOcrService(filePath, originalName) {
   if (!fs.existsSync(filePath)) {
     throw new AppError(`Document file not found at ${filePath}`, 404);
   }
-
   const form = new FormData();
   form.append("file", fs.createReadStream(filePath), {
     filename: originalName || path.basename(filePath),
   });
-
   try {
-    const response = await axios.post(
-      `${OCR_SERVICE_URL}/ocr/extract`,
-      form,
-      {
-        headers: form.getHeaders(),
-        timeout: OCR_TIMEOUT_MS,
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-      },
-    );
+    const response = await axios.post(`${OCR_SERVICE_URL}/ocr/extract`, form, {
+      headers: form.getHeaders(),
+      timeout: OCR_TIMEOUT_MS,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
     return response.data;
   } catch (err) {
     if (err.response) {
       const detail = err.response.data?.detail || err.response.statusText;
-      throw new AppError(
-        `OCR service error (${err.response.status}): ${detail}`,
-        502,
-      );
+      throw new AppError(`UPSTREAM_ERROR: OCR ${err.response.status}: ${detail}`, 502);
     }
     if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND") {
-      throw new AppError(
-        `OCR service unreachable at ${OCR_SERVICE_URL}`,
-        503,
-      );
+      throw new AppError(`UPSTREAM_UNAVAILABLE: OCR service unreachable`, 503);
     }
     throw new AppError(`OCR call failed: ${err.message}`, 500);
   }
@@ -66,24 +54,22 @@ async function callOcrService(filePath, originalName) {
 router.post(
   "/documents/:id/extract",
   authMiddleware,
+  requireRole("CLINICIAN", "ADMIN"),
   async (req, res, next) => {
     try {
-      const doc = await prisma.document.findFirst({
-        where: { id: req.params.id, userId: req.user.id },
-      });
-      if (!doc) throw new AppError("Document not found", 404);
+      await assertCaseload(req, { documentId: req.params.id });
+
+      const doc = await prisma.document.findUnique({ where: { id: req.params.id } });
+      if (!doc) throw new AppError("NOT_FOUND", 404);
 
       await prisma.document.update({
         where: { id: doc.id },
         data: { status: "PREPROCESSING" },
       });
 
-      const ocrResult = await callOcrService(doc.storagePath, doc.originalName);
+      const ocrResult = await callOcrService(doc.storagePath, doc.filename);
 
-      const rawFields = Array.isArray(ocrResult.extracted_fields)
-        ? ocrResult.extracted_fields
-        : [];
-
+      const rawFields = Array.isArray(ocrResult.extracted_fields) ? ocrResult.extracted_fields : [];
       const fields = rawFields
         .map((f) => {
           const fieldValue = normalizeFieldValue(f.value);
@@ -92,8 +78,7 @@ router.post(
             fieldName: f.field_name,
             fieldValue,
             confidence: typeof f.confidence === "number" ? f.confidence : 0,
-            sourceSnippet:
-              f.source_page != null ? `page ${f.source_page}` : null,
+            sourceSnippet: f.source_page != null ? `page ${f.source_page}` : null,
           };
         })
         .filter(Boolean);
@@ -115,6 +100,7 @@ router.post(
           action: "document.extract",
           userId: req.user.id,
           documentId: doc.id,
+          clinicId: doc.clinicId,
           details: {
             fieldCount: fields.length,
             totalPages: ocrResult.total_pages || 0,
@@ -123,9 +109,7 @@ router.post(
         },
       });
 
-      logger.info(
-        `Extracted ${fields.length} fields from document ${doc.id} (${ocrResult.total_pages || 0} pages, ${ocrResult.processing_time_ms || 0}ms)`,
-      );
+      logger.info(`Extracted ${fields.length} fields from document ${doc.id}`);
 
       res.json({
         success: true,
@@ -144,9 +128,10 @@ router.post(
           where: { id: req.params.id },
           data: { status: "FAILED" },
         });
-      } catch (_) {
-        // ignore — original error takes precedence
-      }
+        await prisma.auditLog.create({
+          data: { action: "document.extract.failed", userId: req.user?.id, documentId: req.params.id, details: { error: err.message } },
+        });
+      } catch { /* ignore */ }
       next(err);
     }
   },
@@ -157,6 +142,7 @@ router.get(
   authMiddleware,
   async (req, res, next) => {
     try {
+      await assertCaseload(req, { documentId: req.params.id });
       const fields = await prisma.extractedField.findMany({
         where: { documentId: req.params.id },
       });

@@ -45,6 +45,11 @@ const authService = {
   isAuthenticated() {
     return !!localStorage.getItem('hippa_token');
   },
+
+  async changePassword({ currentPassword, newPassword }) {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return data;
+  },
 };
 
 export default authService;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GlassCard, GradientButton, Icon, ConfidenceBadge } from '../../components/ui';
+import { GlassCard, GradientButton, Icon } from '../../components/ui';
 import { useAuth } from '../../context';
 
 const AuthScreen = ({ onLogin }) => {
@@ -7,22 +7,36 @@ const AuthScreen = ({ onLogin }) => {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [role, setRole] = useState("CLINICIAN");
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
 
+  const switchMode = (m) => {
+    setMode(m);
+    setErrors({});
+    setApiError("");
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     const errs = {};
-    if (!email.includes("@")) errs.email = "Enter a valid email";
-    if (password.length < 6) errs.password = "Password must be at least 6 characters";
+
+    if (!email.trim()) errs.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Enter a valid email";
+
+    if (!password) errs.password = "Password is required";
+    else if (password.length < 6) errs.password = "Password must be at least 6 characters";
+
     if (mode === "register") {
       if (!firstName.trim()) errs.firstName = "First name is required";
       if (!lastName.trim()) errs.lastName = "Last name is required";
+      if (password !== confirmPassword) errs.confirmPassword = "Passwords do not match";
     }
+
     setErrors(errs);
     setApiError("");
     if (Object.keys(errs).length) return;
@@ -30,9 +44,18 @@ const AuthScreen = ({ onLogin }) => {
     setLoading(true);
     try {
       if (mode === "login") {
-        await login(email, password);
+        await login(email.trim(), password);
       } else {
-        await register({ email, password, firstName, lastName, role });
+        // Self-signup is always a clinician account.
+        // Patient logins are created by clinicians from inside the app.
+        // Admin role is reserved and assigned by email server-side.
+        await register({
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          role: "CLINICIAN",
+        });
       }
       onLogin();
     } catch (err) {
@@ -43,159 +66,321 @@ const AuthScreen = ({ onLogin }) => {
     }
   };
 
+  const labelStyle = { display: "block", fontSize: 12.5, fontWeight: 500, color: "var(--ink-2)", marginBottom: 6 };
+  const errorStyle = { display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--danger)", marginTop: 6 };
+
   return (
-    <>
-      <div className="atmosphere" />
-      <div className="auth">
-        {/* LEFT - branded glass panel */}
-        <GlassCard xl strong className="auth-side fade-up">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="brand-mark" style={{ width: 36, height: 36, borderRadius: 11 }}>H</div>
-            <div className="brand-name">Hippa<b>Clinical AI</b></div>
+    <div style={{
+      minHeight: "100vh",
+      background: "var(--bg-base)",
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 0,
+    }}>
+      {/* LEFT — branded panel */}
+      <div style={{
+        background: "linear-gradient(135deg, #0f3a37 0%, #1f6f6b 60%, #2a8a82 100%)",
+        color: "#ffffff",
+        padding: "56px 64px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* Decorative gradient orbs */}
+        <div style={{ position: "absolute", top: -100, right: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(74,177,163,0.4), transparent 70%)", filter: "blur(40px)" }} />
+        <div style={{ position: "absolute", bottom: -80, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, rgba(196,125,86,0.25), transparent 70%)", filter: "blur(40px)" }} />
+
+        {/* Brand */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", display: "grid", placeItems: "center", fontSize: 16, fontWeight: 700, backdropFilter: "blur(10px)" }}>H</div>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>HippaClinical</div>
+            <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: "0.08em", textTransform: "uppercase" }}>Clinical Intake AI</div>
+          </div>
+        </div>
+
+        {/* Main message */}
+        <div style={{ position: "relative", maxWidth: 520 }}>
+          <h1 style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 56,
+            fontWeight: 400,
+            lineHeight: 1.05,
+            letterSpacing: "-0.02em",
+            margin: 0,
+            color: "#ffffff",
+          }}>
+            Intake that thinks. Review that protects.
+          </h1>
+          <p style={{ fontSize: 15, opacity: 0.85, lineHeight: 1.6, marginTop: 22, maxWidth: 460 }}>
+            HIPAA-compliant OASIS-E2 document intake with AI-powered field extraction, confidence scoring, and auditable clinician review.
+          </p>
+
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 36 }}>
+            {[
+              { k: "97.4%", v: "OCR field accuracy" },
+              { k: "<12s", v: "Average extraction time" },
+              { k: "100%", v: "Audit trail coverage" },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: "16px 18px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, backdropFilter: "blur(8px)" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 400 }}>{s.k}</div>
+                <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 4, lineHeight: 1.4 }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer compliance */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 14, fontSize: 12, opacity: 0.7 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="shield" size={14} /> SOC 2 + HIPAA</span>
+          <span style={{ opacity: 0.5 }}>·</span>
+          <span>End-to-end encrypted</span>
+          <span style={{ opacity: 0.5 }}>·</span>
+          <span>FYP · 2026</span>
+        </div>
+      </div>
+
+      {/* RIGHT — form */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 56px",
+        background: "#ffffff",
+      }}>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+
+          {/* Tab switcher */}
+          <div style={{
+            display: "inline-flex",
+            background: "#f1f5f9",
+            padding: 4,
+            borderRadius: 10,
+            marginBottom: 36,
+          }}>
+            {["login", "register"].map(m => (
+              <button key={m} onClick={() => switchMode(m)} style={{
+                border: 0,
+                padding: "8px 18px",
+                borderRadius: 8,
+                background: mode === m ? "#ffffff" : "transparent",
+                color: mode === m ? "var(--ink-1)" : "var(--ink-3)",
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                boxShadow: mode === m ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                transition: "all 160ms ease",
+              }}>
+                {m === "login" ? "Sign in" : "Create account"}
+              </button>
+            ))}
           </div>
 
-          <div style={{ position: "relative", maxWidth: 540, marginTop: -40 }}>
-            <div className="eyebrow" style={{ marginBottom: 16 }}>HIPAA-compliant intake · OASIS-E2</div>
-            <h1 className="display" style={{ fontSize: 64, lineHeight: 1.0 }}>
-              Intake that <em>thinks</em>,<br />
-              review that <em>protects</em>.
-            </h1>
-            <p style={{ fontSize: 15, color: "var(--ink-2)", marginTop: 22, maxWidth: 460 }}>
-              Upload a scanned OASIS-E2 form. Our pipeline extracts every field with confidence scoring, flags anything below threshold, and routes it to the right clinician — fully audit-trailed.
-            </p>
+          <h2 style={{
+            fontSize: 30,
+            fontWeight: 600,
+            letterSpacing: "-0.015em",
+            color: "var(--ink-1)",
+            margin: 0,
+            marginBottom: 8,
+          }}>
+            {mode === "login" ? "Welcome back" : "Create your account"}
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ink-3)", margin: 0, marginBottom: 32, lineHeight: 1.5 }}>
+            {mode === "login"
+              ? "Sign in with your credentials to access the clinical intake workspace."
+              : "Provision a workspace to manage OASIS-E2 intake, review, and care planning."}
+          </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 32, maxWidth: 520 }}>
-              {[
-                { k: "97.4%", v: "Field-level OCR accuracy on OASIS-E2" },
-                { k: "< 12 s", v: "Average extraction time, 4-page form" },
-                { k: "100%", v: "Of edits captured in audit trail" },
-              ].map((s, i) => (
-                <GlassCard key={i} sm style={{ padding: 14 }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "var(--accent)" }}>{s.k}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.4 }}>{s.v}</div>
-                </GlassCard>
-              ))}
+          {apiError && (
+            <div style={{
+              padding: "12px 14px",
+              background: "#fef2f2",
+              border: "1px solid #fee2e2",
+              borderRadius: 8,
+              marginBottom: 18,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}>
+              <Icon name="warn" size={15} style={{ color: "#dc2626", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "#991b1b" }}>{apiError}</span>
             </div>
-          </div>
+          )}
 
-          <div style={{ position: "absolute", right: -60, top: 80, width: 320, height: 220, pointerEvents: "none", opacity: 0.85 }}>
-            <GlassCard xl style={{ position: "absolute", right: 30, top: 0, width: 200, padding: 14, transform: "rotate(-3deg)" }}>
-              <div className="eyebrow">M0040 · Patient name</div>
-              <div className="mono" style={{ fontSize: 14, color: "var(--ink-1)", marginTop: 6 }}>Alexander A. Hill</div>
-              <div style={{ marginTop: 8 }}><ConfidenceBadge value={0.96} /></div>
-            </GlassCard>
-            <GlassCard xl style={{ position: "absolute", right: 100, top: 110, width: 220, padding: 14, transform: "rotate(2deg)" }}>
-              <div className="eyebrow">M1021 · Primary diagnosis</div>
-              <div className="mono" style={{ fontSize: 13, color: "var(--ink-1)", marginTop: 6 }}>I50.9 — Heart failure</div>
-              <div style={{ marginTop: 8 }}><ConfidenceBadge value={0.42} /></div>
-            </GlassCard>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 16, color: "var(--ink-3)", fontSize: 12 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="shield" size={14} /> SOC 2 + HIPAA</span>
-            <span>·</span>
-            <span>End-to-end encrypted</span>
-            <span>·</span>
-            <span>Azure US-East</span>
-          </div>
-        </GlassCard>
-
-        {/* RIGHT - form */}
-        <GlassCard xl strong className="auth-form-wrap fade-up" style={{ animationDelay: "120ms" }}>
-          <div className="form-stack" style={{ margin: "0 auto" }}>
-            <div style={{ display: "flex", gap: 4, padding: 4, background: "rgba(0,0,0,0.04)", borderRadius: 999, width: "fit-content", marginBottom: 28 }}>
-              {["login", "register"].map(m => (
-                <button key={m} onClick={() => { setMode(m); setApiError(""); setErrors({}); }} style={{
-                  border: 0, padding: "6px 14px", borderRadius: 999,
-                  background: mode === m ? "var(--glass-bg-strong)" : "transparent",
-                  color: mode === m ? "var(--ink-1)" : "var(--ink-3)",
-                  fontWeight: 500, fontSize: 12.5, cursor: "pointer",
-                  boxShadow: mode === m ? "var(--shadow-1)" : "none",
-                  textTransform: "capitalize", fontFamily: "inherit",
-                }}>{m === "login" ? "Sign in" : "Create account"}</button>
-              ))}
-            </div>
-
-            <h2 className="display" style={{ fontSize: 38 }}>
-              {mode === "login" ? <>Welcome <em>back</em>.</> : <>Create your <em>account</em>.</>}
-            </h2>
-            <p className="muted" style={{ marginTop: 8, marginBottom: 28, fontSize: 13.5 }}>
-              {mode === "login" ? "Sign in with your clinic credentials to access the intake queue." : "Provision a workspace for your home-health agency."}
-            </p>
-
-            {apiError && (
-              <div style={{ padding: "10px 14px", background: "var(--danger-bg)", border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)", borderRadius: "var(--r-2)", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon name="warn" size={14} style={{ color: "var(--danger)" }} />
-                <span style={{ fontSize: 13, color: "var(--danger)" }}>{apiError}</span>
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {mode === "register" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>First name</label>
+                  <input
+                    className="input"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Jane"
+                    autoComplete="given-name"
+                  />
+                  {errors.firstName && <div style={errorStyle}><Icon name="warn" size={11} />{errors.firstName}</div>}
+                </div>
+                <div>
+                  <label style={labelStyle}>Last name</label>
+                  <input
+                    className="input"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                    autoComplete="family-name"
+                  />
+                  {errors.lastName && <div style={errorStyle}><Icon name="warn" size={11} />{errors.lastName}</div>}
+                </div>
               </div>
             )}
 
-            <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {mode === "register" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <label className="label">First name</label>
-                    <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" />
-                    {errors.firstName && <div className="field-error"><Icon name="warn" size={12} />{errors.firstName}</div>}
-                  </div>
-                  <div>
-                    <label className="label">Last name</label>
-                    <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" />
-                    {errors.lastName && <div className="field-error"><Icon name="warn" size={12} />{errors.lastName}</div>}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="label">Work email</label>
-                <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@clinic.org" autoComplete="email" />
-                {errors.email && <div className="field-error"><Icon name="warn" size={12} />{errors.email}</div>}
-              </div>
-              <div>
-                <label className="label">Password</label>
-                <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 6 characters" />
-                {errors.password && <div className="field-error"><Icon name="warn" size={12} />{errors.password}</div>}
-              </div>
-
-              {mode === "register" && (
-                <div>
-                  <label className="label">Role</label>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                    {[["ADMIN", "Admin"], ["CLINICIAN", "Clinician"], ["VIEWER", "Viewer"]].map(([k, l]) => (
-                      <button key={k} type="button" onClick={() => setRole(k)} className="glass" style={{
-                        padding: "10px 8px",
-                        border: role === k ? "1px solid var(--accent)" : "1px solid var(--glass-border-soft)",
-                        background: role === k ? "var(--accent-soft)" : "var(--glass-bg)",
-                        color: role === k ? "var(--accent)" : "var(--ink-2)",
-                        fontWeight: 500, fontSize: 12.5, cursor: "pointer",
-                        borderRadius: "var(--r-2)", fontFamily: "inherit",
-                      }}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {mode === "login" && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, marginTop: -2 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-3)" }}>
-                    <input type="checkbox" defaultChecked /> Remember this device
-                  </label>
-                  <a href="#" style={{ color: "var(--accent)", textDecoration: "none" }}>Forgot password</a>
-                </div>
-              )}
-
-              <GradientButton variant="primary" size="lg" block type="submit" iconRight="arrow-r">
-                {loading ? (mode === "login" ? "Signing in..." : "Creating account...") : (mode === "login" ? "Sign in" : "Create account")}
-              </GradientButton>
-            </form>
-
-            <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "var(--ink-3)" }}>
-              By continuing you agree to our <a href="#" style={{ color: "var(--ink-2)" }}>BAA</a> and <a href="#" style={{ color: "var(--ink-2)" }}>privacy policy</a>.
+            <div>
+              <label style={labelStyle}>Email address</label>
+              <input
+                className="input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@clinic.org"
+                autoComplete="email"
+              />
+              {errors.email && <div style={errorStyle}><Icon name="warn" size={11} />{errors.email}</div>}
             </div>
+
+            <div>
+              <label style={labelStyle}>Password</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  className="input"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === "register" ? "Min 6 characters" : "Enter your password"}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  style={{ paddingRight: 44 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: 0,
+                    background: "transparent",
+                    color: "var(--ink-3)",
+                    cursor: "pointer",
+                    padding: 6,
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 500,
+                  }}
+                  tabIndex={-1}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              {errors.password && <div style={errorStyle}><Icon name="warn" size={11} />{errors.password}</div>}
+            </div>
+
+            {mode === "register" && (
+              <>
+                <div>
+                  <label style={labelStyle}>Confirm password</label>
+                  <input
+                    className="input"
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    autoComplete="new-password"
+                  />
+                  {errors.confirmPassword && <div style={errorStyle}><Icon name="warn" size={11} />{errors.confirmPassword}</div>}
+                </div>
+
+                <div style={{
+                  padding: "12px 14px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}>
+                  <Icon name="shield" size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                    You&apos;ll be registered as a <b>Clinician</b> — full access to upload, review, generate plans of care, and onboard patients.
+                    <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+                      Patients receive login credentials by email from their clinician.
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <GradientButton
+              variant="primary"
+              size="lg"
+              block
+              type="submit"
+              disabled={loading}
+              iconRight={loading ? null : "arrow-r"}
+              style={{ marginTop: 8 }}
+            >
+              {loading
+                ? (mode === "login" ? "Signing in..." : "Creating account...")
+                : (mode === "login" ? "Sign in" : "Create account")}
+            </GradientButton>
+          </form>
+
+          {/* Switch mode prompt */}
+          <div style={{
+            textAlign: "center",
+            marginTop: 28,
+            paddingTop: 24,
+            borderTop: "1px solid var(--glass-border)",
+            fontSize: 13,
+            color: "var(--ink-3)",
+          }}>
+            {mode === "login" ? (
+              <>
+                Don&apos;t have an account?{" "}
+                <button onClick={() => switchMode("register")} style={{ border: 0, background: "transparent", color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>
+                  Create one
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button onClick={() => switchMode("login")} style={{ border: 0, background: "transparent", color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>
+                  Sign in
+                </button>
+              </>
+            )}
           </div>
-        </GlassCard>
+
+          <div style={{
+            textAlign: "center",
+            marginTop: 16,
+            fontSize: 11.5,
+            color: "var(--ink-4)",
+            lineHeight: 1.6,
+          }}>
+            By continuing you agree to our{" "}
+            <a href="#" style={{ color: "var(--ink-3)", textDecoration: "underline" }}>Business Associate Agreement</a>
+            {" "}and{" "}
+            <a href="#" style={{ color: "var(--ink-3)", textDecoration: "underline" }}>Privacy Policy</a>.
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 };
 
