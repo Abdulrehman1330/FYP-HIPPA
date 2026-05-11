@@ -1,19 +1,89 @@
 import { useState, useEffect } from 'react';
 import { GlassCard, GradientButton, Icon, Avatar, ConfidenceBadge, StatusPill, Sparkline } from '../../components/ui';
 import { PATIENTS as MOCK_PATIENTS, DOCS as MOCK_DOCS, AUDIT_TRAIL, fieldsFor } from '../../data';
-import { documentService } from '../../services';
+import { documentService, patientService } from '../../services';
 import { PocScreen } from '../PlanOfCare';
 import { RiskScreen } from '../RiskScoring';
 
-const PatientScreen = ({ goto, params, role }) => {
+function displayName(user, fallback = '—') {
+  if (!user) return fallback;
+  return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || fallback;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString().slice(0, 10);
+}
+
+const PatientScreen = ({ goto, params, role, user }) => {
   const [tab, setTab] = useState("overview");
   const [patient, setPatient] = useState(null);
   const [docs, setDocs] = useState([]);
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
+  const patientReadOnly = role === 'PATIENT';
 
   useEffect(() => {
-    const pid = params?.patientId;
+    let cancelled = false;
+
+    if (patientReadOnly) {
+      setLoading(true);
+      Promise.allSettled([
+        patientService.getMyProfile(),
+        patientService.getMyDocuments(),
+        patientService.getMyRisk(),
+      ])
+        .then(([profileResult, documentsResult, riskResult]) => {
+          if (cancelled) return;
+
+          const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
+          const documents = documentsResult.status === 'fulfilled'
+            ? documentsResult.value.documents || []
+            : [];
+          const risk = riskResult.status === 'fulfilled' ? riskResult.value : null;
+
+          setPatient({
+            id: profile?.id || user?.id || 'my-profile',
+            name: displayName(profile?.user, user?.name || 'My Record'),
+            dob: formatDate(profile?.dateOfBirth),
+            sex: '—',
+            state: profile?.clinic?.name || '—',
+            zip: '—',
+            soc: profile?.enrolledAt ? formatDate(profile.enrolledAt) : '—',
+            primary_dx: 'Available in approved care documents',
+            secondary: [],
+            risk: risk?.riskScore ?? risk?.risk_score ?? 0,
+            riskClass: risk?.riskClass || risk?.risk_class || 'not scored',
+            docs: documents.length,
+            careTeam: [
+              profile?.primaryDoctor && { name: displayName(profile.primaryDoctor), role: 'Primary doctor', primary: true },
+              profile?.primaryClinician && { name: displayName(profile.primaryClinician), role: 'Primary clinician' },
+            ].filter(Boolean),
+          });
+          setDocs(documents.map((doc) => ({
+            id: doc.id,
+            filename: doc.filename,
+            pages: 1,
+            status: doc.status,
+            uploadedAt: doc.uploadedAt,
+          })));
+          setFields([
+            { key: 'name', label: 'Patient name', oasis: '', value: displayName(profile?.user, user?.name || '—'), confidence: 1, section: 'Profile' },
+            { key: 'mrn', label: 'Medical record number', oasis: '', value: profile?.mrn || '—', confidence: 1, section: 'Profile' },
+            { key: 'date_of_birth', label: 'Date of birth', oasis: '', value: formatDate(profile?.dateOfBirth), confidence: 1, section: 'Profile' },
+            { key: 'clinic', label: 'Clinic', oasis: '', value: profile?.clinic?.name || '—', confidence: 1, section: 'Care team' },
+            { key: 'primary_doctor', label: 'Primary doctor', oasis: '', value: displayName(profile?.primaryDoctor), confidence: 1, section: 'Care team' },
+            { key: 'primary_clinician', label: 'Primary clinician', oasis: '', value: displayName(profile?.primaryClinician), confidence: 1, section: 'Care team' },
+          ]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => { cancelled = true; };
+    }
+
+    const pid = params?.patientId || params?.id;
 
     // First try mock data
     const mockPatient = MOCK_PATIENTS.find(p => p.id === pid);
@@ -82,7 +152,8 @@ const PatientScreen = ({ goto, params, role }) => {
       setFields(fieldsFor());
       setLoading(false);
     }
-  }, [params?.patientId]);
+    return () => { cancelled = true; };
+  }, [params?.patientId, params?.id, patientReadOnly, user?.id, user?.name]);
 
   if (loading || !patient) {
     return (
@@ -98,7 +169,7 @@ const PatientScreen = ({ goto, params, role }) => {
         <div>
           <div className="crumb">
             <span onClick={() => goto("dashboard")} style={{ cursor: "pointer" }}>Workspace</span><Icon name="chev-r" size={12} />
-            <span onClick={() => goto("patients")} style={{ cursor: "pointer" }}>Patients</span><Icon name="chev-r" size={12} />
+            {!patientReadOnly && <><span onClick={() => goto("patients")} style={{ cursor: "pointer" }}>Patients</span><Icon name="chev-r" size={12} /></>}
             <span className="mono">{typeof patient.id === 'string' && patient.id.length > 12 ? patient.id.slice(0, 8) + '...' : patient.id}</span>
           </div>
           <h1 style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -112,14 +183,24 @@ const PatientScreen = ({ goto, params, role }) => {
             <span>SOC {patient.soc}</span>
           </div>
         </div>
-        <div className="actions">
-          <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload")}>New document</GradientButton>
-          <GradientButton size="sm" variant="primary" icon="poc" onClick={() => goto("poc")}>Open POC</GradientButton>
-        </div>
+        {!patientReadOnly && (
+          <div className="actions">
+            <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload")}>New document</GradientButton>
+            <GradientButton size="sm" variant="primary" icon="poc" onClick={() => goto("poc")}>Open POC</GradientButton>
+          </div>
+        )}
+        {patientReadOnly && (
+          <div className="actions">
+            <GradientButton size="sm" variant="primary" icon="poc" onClick={() => goto("poc")}>My care plan</GradientButton>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: "1px solid var(--glass-border-soft)" }}>
-        {[["overview", "Overview"], ["data", "Extracted data"], ["poc", "Plan of care"], ["risk", "Risk"], ["audit", "Audit log"]].map(([k, l]) => (
+        {(patientReadOnly
+          ? [["overview", "Overview"], ["data", "My details"], ["poc", "Plan of care"], ["risk", "Risk"]]
+          : [["overview", "Overview"], ["data", "Extracted data"], ["poc", "Plan of care"], ["risk", "Risk"], ["audit", "Audit log"]]
+        ).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             border: 0, background: "transparent", padding: "10px 14px", fontSize: 13, fontWeight: 500,
             color: tab === k ? "var(--ink-1)" : "var(--ink-3)",
@@ -160,7 +241,7 @@ const PatientScreen = ({ goto, params, role }) => {
               </div>
               <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 {docs.map(d => (
-                  <div key={d.id} onClick={() => goto("review", { docId: d.id })} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "var(--glass-inner)", border: "1px solid var(--glass-border-soft)", borderRadius: 10, cursor: "pointer" }}>
+                  <div key={d.id} onClick={() => !patientReadOnly && goto("review", { docId: d.id })} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "var(--glass-inner)", border: "1px solid var(--glass-border-soft)", borderRadius: 10, cursor: patientReadOnly ? "default" : "pointer" }}>
                     <Icon name="doc" size={16} style={{ color: "var(--accent)" }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500 }} className="clamp-1">{d.filename}</div>
@@ -170,6 +251,11 @@ const PatientScreen = ({ goto, params, role }) => {
                     <StatusPill status={d.status} />
                   </div>
                 ))}
+                {docs.length === 0 && (
+                  <div className="muted" style={{ fontSize: 12.5, padding: 12 }}>
+                    No documents are currently visible for your patient profile.
+                  </div>
+                )}
               </div>
             </GlassCard>
           </div>
@@ -178,7 +264,7 @@ const PatientScreen = ({ goto, params, role }) => {
               <div className="eyebrow">Readmission risk</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginTop: 6 }}>
                 <div className="display" style={{ fontSize: 56, color: patient.riskClass === "high" ? "var(--danger)" : patient.riskClass === "medium" ? "var(--warn)" : "var(--ok)", lineHeight: 1 }}>{(patient.risk || 0).toFixed(2)}</div>
-                <span className={`pill pill--${patient.riskClass === "high" ? "danger" : patient.riskClass === "medium" ? "warn" : "ok"}`} style={{ height: 24 }}>{(patient.riskClass || 'low').toUpperCase()}</span>
+                <span className={`pill pill--${patient.riskClass === "high" ? "danger" : patient.riskClass === "medium" ? "warn" : patient.riskClass === "not scored" ? "neutral" : "ok"}`} style={{ height: 24 }}>{(patient.riskClass || 'low').toUpperCase()}</span>
               </div>
               <Sparkline data={[(patient.risk||0) - 0.18, (patient.risk||0) - 0.12, (patient.risk||0) - 0.14, (patient.risk||0) - 0.08, (patient.risk||0) - 0.04, patient.risk||0]} w={300} h={56} stroke={patient.riskClass === "high" ? "var(--danger)" : "var(--accent)"} />
               <button className="btn btn--block btn--sm btn--ghost" style={{ marginTop: 12 }} onClick={() => goto("risk")}>View risk breakdown <Icon name="arrow-r" size={11} /></button>
@@ -186,12 +272,15 @@ const PatientScreen = ({ goto, params, role }) => {
             <GlassCard strong style={{ padding: 22 }}>
               <div className="eyebrow">Care team</div>
               <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  { name: "Dr. J. Patel", role: "Lead clinician", primary: true },
-                  { name: "Dr. K. Adler", role: "Reviewer" },
-                  { name: "RN M. Solomon", role: "Field nurse" },
-                  { name: "PT R. Owens", role: "Physical therapy" },
-                ].map(t => (
+                {(patientReadOnly
+                  ? (patient.careTeam?.length ? patient.careTeam : [{ name: "Care team", role: "Assigned by your clinic", primary: true }])
+                  : [
+                    { name: "Dr. J. Patel", role: "Lead clinician", primary: true },
+                    { name: "Dr. K. Adler", role: "Reviewer" },
+                    { name: "RN M. Solomon", role: "Field nurse" },
+                    { name: "PT R. Owens", role: "Physical therapy" },
+                  ]
+                ).map(t => (
                   <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Avatar name={t.name} size={28} />
                     <div style={{ flex: 1 }}>
@@ -226,8 +315,8 @@ const PatientScreen = ({ goto, params, role }) => {
         </GlassCard>
       )}
 
-      {tab === "poc" && <PocScreen goto={goto} params={{ docId: patient.id }} addToast={() => {}} />}
-      {tab === "risk" && <RiskScreen goto={goto} params={{ docId: patient.id }} addToast={() => {}} />}
+      {tab === "poc" && <PocScreen goto={goto} params={patientReadOnly ? { role } : { docId: patient.id, role }} addToast={() => {}} />}
+      {tab === "risk" && <RiskScreen goto={goto} params={patientReadOnly ? { role } : { docId: patient.id, role }} addToast={() => {}} />}
 
       {tab === "audit" && (
         <GlassCard strong style={{ padding: 22 }}>

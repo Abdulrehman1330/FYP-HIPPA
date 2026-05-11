@@ -34,7 +34,7 @@ def ocr_image(image: np.ndarray, page_number: int) -> dict:
     )
 
     blocks: list[dict] = []
-    text_chunks: list[str] = []
+    line_chunks: dict[tuple[int, int, int], list[str]] = {}
 
     for i in range(len(data.get("text", []))):
         token = (data["text"][i] or "").strip()
@@ -60,10 +60,18 @@ def ocr_image(image: np.ndarray, page_number: int) -> dict:
                 "bbox": [float(x), float(y), float(x + w), float(y + h)],
             }
         )
-        text_chunks.append(token)
+
+        line_key = (
+            int(data.get("block_num", [0])[i] or 0),
+            int(data.get("par_num", [0])[i] or 0),
+            int(data.get("line_num", [0])[i] or 0),
+        )
+        line_chunks.setdefault(line_key, []).append(token)
+
+    text = "\n".join(" ".join(tokens) for _, tokens in sorted(line_chunks.items()))
 
     return {
         "page_number": page_number,
-        "text": " ".join(text_chunks),
+        "text": text,
         "blocks": blocks,
     }

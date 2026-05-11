@@ -1,0 +1,50 @@
+{
+  "review_id": "REV-SYN001-001",
+  "document_id": "DOC-SYN001-OASIS",
+  "patient_id": "SYN-001",
+  "form_type": "OASIS-E2",
+  "approved_by": "demo-reviewer-1",
+  "approved_at": "2026-05-08T12:00:00Z",
+  "fields": [
+    {
+      "field_id": "DX1",
+      "field_name": "primary_diagnosis",
+      "label": "Primary Diagnosis",
+      "value": "Congestive heart failure with hypertension comorbidity.",
+      "approved": true,
+      "corrected": true,
+      "page_number": 2,
+      "confidence": 0.91
+    },
+    {
+      "field_id": "MOB1",
+      "field_name": "ambulation_locomotion",
+      "label": "Ambulation and Locomotion",
+      "value": "Patient requires walker and one-person assistance for safe ambulation.",
+      "approved": true,
+      "corrected": false,
+      "page_number": 4,
+      "confidence": 0.88
+    },
+    {
+      "field_id": "SAFE1",
+      "field_name": "fall_risk",
+      "label": "Fall Risk",
+      "value": "High fall risk due to impaired balance and cluttered bedroom pathway.",
+      "approved": true,
+      "corrected": true,
+      "page_number": 5,
+      "confidence": 0.79
+    },
+    {
+      "field_id": "RAW1",
+      "field_name": "medication_management",
+      "label": "Medication Management",
+      "value": "Raw OCR mentions insulin sliding scale but reviewer did not approve it.",
+      "approved": false,
+      "corrected": false,
+      "page_number": 6,
+      "confidence": 0.52
+    }
+  ]
+}

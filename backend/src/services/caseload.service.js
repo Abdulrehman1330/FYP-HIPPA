@@ -106,6 +106,61 @@ async function selfDocuments(user) {
   });
 }
 
+async function selfLatestPoc(user) {
+  const p = await prisma.patient.findFirst({ where: { userId: user.id }, select: { id: true } });
+  if (!p) throw new AppError("Patient profile not found", 404);
+
+  const poc = await prisma.generatedPoc.findFirst({
+    where: {
+      document: {
+        patientId: p.id,
+        status: { in: ["POC_GENERATED", "RISK_SCORED"] },
+      },
+    },
+    orderBy: { generatedAt: "desc" },
+    include: {
+      document: {
+        select: {
+          id: true,
+          filename: true,
+          status: true,
+          uploadedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!poc) throw new AppError("No generated Plan of Care found for this patient", 404);
+  return poc;
+}
+
+async function selfLatestRisk(user) {
+  const p = await prisma.patient.findFirst({ where: { userId: user.id }, select: { id: true } });
+  if (!p) throw new AppError("Patient profile not found", 404);
+
+  const risk = await prisma.riskScore.findFirst({
+    where: {
+      document: {
+        patientId: p.id,
+      },
+    },
+    orderBy: { predictedAt: "desc" },
+    include: {
+      document: {
+        select: {
+          id: true,
+          filename: true,
+          status: true,
+          uploadedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!risk) throw new AppError("No risk score found for this patient", 404);
+  return risk;
+}
+
 module.exports = {
   clinicianPatients,
   clinicianPatientDetail,
@@ -113,4 +168,6 @@ module.exports = {
   doctorPatientDetail,
   selfProfile,
   selfDocuments,
+  selfLatestPoc,
+  selfLatestRisk,
 };

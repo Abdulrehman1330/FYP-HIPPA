@@ -1,4 +1,5 @@
 const OpenAI = require("openai").default;
+const axios = require("axios");
 const prisma = require("../config/database");
 const { config } = require("../config/env");
 const { AppError } = require("../middleware/error.middleware");
@@ -46,6 +47,158 @@ const POC_SECTIONS = [
 const LLM_MAX_RETRIES = 3;
 const LLM_RETRY_BASE_MS = 500;
 const SECTION_TIMEOUT_MS = 30000;
+const GENERATOR_VERSION = "poc-llm-v1";
+const GENERATABLE_DOCUMENT_STATUSES = ["APPROVED", "POC_GENERATED", "RISK_SCORED"];
+const POC_SYSTEM_PROMPT =
+  "You are a clinical documentation assistant for home-health Plans of Care. " +
+  "You produce draft documentation for clinician review only. " +
+  "You must use only approved numbered evidence, preserve inline citations, and return valid JSON only.";
+
+function resolveLlmProvider() {
+  const requested = config.llmProvider || "auto";
+  const available = {
+    gemini: Boolean(config.geminiKey),
+    anthropic: Boolean(config.anthropicKey),
+    openai: Boolean(config.openaiKey),
+  };
+
+  if (requested === "none") return null;
+
+  if (requested !== "auto") {
+    if (!available[requested]) {
+      logger.warn(`LLM provider '${requested}' selected but API key is missing; using fallback generator`);
+      return null;
+    }
+    return requested;
+  }
+
+  if (available.gemini) return "gemini";
+  if (available.anthropic) return "anthropic";
+  if (available.openai) return "openai";
+  return null;
+}
+
+function createLlmClient() {
+  const provider = resolveLlmProvider();
+  if (!provider) return null;
+
+  if (provider === "openai") {
+    const client = new OpenAI({ apiKey: config.openaiKey });
+    return {
+      provider,
+      model: config.openaiModel,
+      async generateJson(prompt) {
+        const completion = await client.chat.completions.create(
+          {
+            model: config.openaiModel,
+            temperature: 0.3,
+            max_tokens: 2500,
+            messages: [
+              { role: "system", content: POC_SYSTEM_PROMPT },
+              { role: "user", content: prompt },
+            ],
+            response_format: { type: "json_object" },
+          },
+          { timeout: SECTION_TIMEOUT_MS },
+        );
+        return completion.choices[0]?.message?.content || "";
+      },
+    };
+  }
+
+  if (provider === "gemini") {
+    return {
+      provider,
+      model: config.geminiModel,
+      async generateJson(prompt) {
+        const { data } = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`,
+          {
+            systemInstruction: {
+              parts: [{ text: POC_SYSTEM_PROMPT }],
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 2500,
+              responseMimeType: "application/json",
+            },
+          },
+          {
+            timeout: SECTION_TIMEOUT_MS,
+            headers: {
+              "x-goog-api-key": config.geminiKey,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+        return data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+      },
+    };
+  }
+
+  if (provider === "anthropic") {
+    return {
+      provider,
+      model: config.anthropicModel,
+      async generateJson(prompt) {
+        const { data } = await axios.post(
+          "https://api.anthropic.com/v1/messages",
+          {
+            model: config.anthropicModel,
+            max_tokens: 2500,
+            temperature: 0.3,
+            system: POC_SYSTEM_PROMPT,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          },
+          {
+            timeout: SECTION_TIMEOUT_MS,
+            headers: {
+              "x-api-key": config.anthropicKey,
+              "anthropic-version": config.anthropicVersion,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+        return data?.content?.map((part) => part.text || "").join("") || "";
+      },
+    };
+  }
+
+  return null;
+}
+
+function providerErrorSummary(err) {
+  return {
+    status: err?.status || err?.response?.status || null,
+    code: err?.code || err?.response?.data?.error?.code || err?.response?.data?.error?.type || null,
+    type: err?.type || err?.response?.data?.error?.type || null,
+    message:
+      err?.response?.data?.error?.message ||
+      err?.error?.message ||
+      err?.message ||
+      "LLM provider request failed",
+  };
+}
+
+function providerRetryAfterMs(err) {
+  const summary = providerErrorSummary(err);
+  const match = String(summary.message || "").match(/retry in\s+([\d.]+)s/i);
+  if (!match) return null;
+  const seconds = Number.parseFloat(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.min(Math.ceil(seconds * 1000) + 1000, 60000);
+}
 
 function buildEvidence(extractedFields) {
   const populated = extractedFields
@@ -72,6 +225,119 @@ function evidenceToPrompt(evidence) {
     .join("\n");
 }
 
+function buildClinicalDocumentScope(user) {
+  const baseScope = {
+    status: { in: GENERATABLE_DOCUMENT_STATUSES },
+    extractedFields: {
+      some: {
+        fieldValue: { not: null },
+      },
+    },
+  };
+
+  switch (user.role) {
+    case "ADMIN":
+      return { ...baseScope, clinicId: user.clinicId };
+    case "CLINICIAN":
+      return {
+        ...baseScope,
+        clinicId: user.clinicId,
+        OR: [
+          { userId: user.id },
+          { patient: { primaryClinicianId: user.id } },
+        ],
+      };
+    case "DOCTOR":
+      return {
+        ...baseScope,
+        clinicId: user.clinicId,
+        patient: { primaryDoctorId: user.id },
+      };
+    default:
+      return { id: "__never__" };
+  }
+}
+
+async function findLatestAccessiblePocDocument(user) {
+  const document = await prisma.document.findFirst({
+    where: buildClinicalDocumentScope(user),
+    orderBy: [
+      { updatedAt: "desc" },
+      { uploadedAt: "desc" },
+    ],
+    select: {
+      id: true,
+      filename: true,
+      fileType: true,
+      status: true,
+      uploadedAt: true,
+      updatedAt: true,
+      patientId: true,
+      patient: {
+        select: {
+          id: true,
+          mrn: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
+
+  if (!document) {
+    throw new AppError("No approved document with extracted fields found for POC generation", 404);
+  }
+
+  return document;
+}
+
+function sectionPrompt(section, evidenceText) {
+  return [
+    `Section key: ${section.name}`,
+    `Section title: ${section.title}`,
+    "",
+    "Approved evidence:",
+    evidenceText || "(none)",
+    "",
+    "Return JSON only with this shape:",
+    '{"content":"...","insufficientEvidenceReason":null}',
+    "",
+    "Rules:",
+    "- Use only the approved evidence above.",
+    "- Cite evidence inline with [N] where N is the evidence number.",
+    "- Do not invent diagnoses, medications, visit frequency, goals, or interventions.",
+    "- Keep the wording clinician-editable and concise.",
+    "- If the evidence is not enough, set content to exactly: Insufficient evidence to draft this section.",
+    "- If evidence is insufficient, explain the missing information in insufficientEvidenceReason.",
+  ].join("\n");
+}
+
+function allSectionsPrompt(evidenceText) {
+  const sectionKeys = POC_SECTIONS
+    .map((section) => `- ${section.name}: ${section.title}`)
+    .join("\n");
+
+  return [
+    "Generate all Plan of Care sections in one JSON response.",
+    "",
+    "Sections:",
+    sectionKeys,
+    "",
+    "Approved evidence:",
+    evidenceText || "(none)",
+    "",
+    "Return JSON only with this exact shape:",
+    '{"sections":{"patient_summary":{"content":"...","insufficientEvidenceReason":null},"problems":{"content":"...","insufficientEvidenceReason":null},"goals":{"content":"...","insufficientEvidenceReason":null},"interventions":{"content":"...","insufficientEvidenceReason":null},"medication_management":{"content":"...","insufficientEvidenceReason":null},"safety_concerns":{"content":"...","insufficientEvidenceReason":null},"follow_up":{"content":"...","insufficientEvidenceReason":null}}}',
+    "",
+    "Rules:",
+    "- Use only the approved evidence above.",
+    "- Cite evidence inline with [N] where N is the evidence number.",
+    "- Do not invent diagnoses, medications, visit frequency, goals, or interventions.",
+    "- Keep each section concise and clinician-editable.",
+    "- If evidence is not enough for a section, set that section content to exactly: Insufficient evidence to draft this section.",
+    "- If evidence is insufficient, explain the missing information in insufficientEvidenceReason.",
+  ].join("\n");
+}
+
 function relevantEvidence(evidence, fieldHints) {
   if (!fieldHints?.length) return evidence;
   const hintSet = new Set(fieldHints);
@@ -88,6 +354,164 @@ function extractCitedIndices(content, evidence) {
   return [...found].sort((a, b) => a - b);
 }
 
+function parseJsonSection(raw) {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return {
+      content: String(raw.content || "").trim() || "Insufficient evidence to draft this section.",
+      insufficientEvidenceReason: raw.insufficientEvidenceReason || null,
+    };
+  }
+
+  const text = String(raw || "").trim();
+  if (!text) {
+    return {
+      content: "Insufficient evidence to draft this section.",
+      insufficientEvidenceReason: "The LLM returned an empty response.",
+    };
+  }
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() || text;
+
+  try {
+    const parsed = JSON.parse(candidate);
+    if (typeof parsed.content === "string") {
+      const nested = parsed.content.trim();
+      if (nested.startsWith("{") && nested.endsWith("}")) {
+        try {
+          const nestedParsed = JSON.parse(nested);
+          return {
+            content: String(nestedParsed.content || "").trim() || "Insufficient evidence to draft this section.",
+            insufficientEvidenceReason: nestedParsed.insufficientEvidenceReason || parsed.insufficientEvidenceReason || null,
+          };
+        } catch {
+          // Keep the original parsed content below if the nested string is not valid JSON.
+        }
+      }
+    }
+    return {
+      content: String(parsed.content || "").trim() || "Insufficient evidence to draft this section.",
+      insufficientEvidenceReason: parsed.insufficientEvidenceReason || null,
+    };
+  } catch {
+    return {
+      content: text,
+      insufficientEvidenceReason: null,
+    };
+  }
+}
+
+function parseJsonPayload(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() || text;
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function fallbackSection(section, localEvidence) {
+  const cited = localEvidence.slice(0, 4);
+  const evidenceLines = cited.map((e) => `- ${e.fieldName}: ${e.value} [${e.index}]`).join("\n");
+  const content = cited.length
+    ? [
+        `${section.title} draft based on approved evidence:`,
+        evidenceLines,
+        "",
+        "Clinician review required before final approval.",
+      ].join("\n")
+    : "Insufficient evidence to draft this section.";
+
+  return {
+    content,
+    insufficientEvidenceReason: cited.length ? null : "No approved evidence matched this Plan of Care section.",
+    citations: cited.map((e) => ({
+      index: e.index,
+      fieldName: e.fieldName,
+      value: e.value,
+      sourcePage: e.sourcePage,
+    })),
+  };
+}
+
+function buildLlmSectionResult(llmClient, section, rawSection, evidence) {
+  const parsed = parseJsonSection(rawSection);
+  const content = parsed.content;
+  const localEvidence = relevantEvidence(evidence, section.fieldHints);
+  const citedIndices = extractCitedIndices(content, evidence);
+  const indexMap = new Map(evidence.map((e) => [e.index, e]));
+  const citationIndices = citedIndices.length > 0
+    ? citedIndices
+    : localEvidence.slice(0, content.toLowerCase().includes("insufficient evidence") ? 0 : 2).map((e) => e.index);
+  const citations = citationIndices
+    .map((i) => indexMap.get(i))
+    .filter(Boolean)
+    .map((e) => ({
+      index: e.index,
+      fieldName: e.fieldName,
+      value: e.value,
+      sourcePage: e.sourcePage,
+    }));
+
+  return {
+    section: section.name,
+    title: section.title,
+    content,
+    citations,
+    sufficientEvidence: !content.toLowerCase().includes("insufficient evidence"),
+    insufficientEvidenceReason: parsed.insufficientEvidenceReason,
+    generatedAt: new Date().toISOString(),
+    editedByClinician: false,
+    generator: {
+      mode: "llm",
+      provider: llmClient.provider,
+      model: llmClient.model,
+      version: GENERATOR_VERSION,
+    },
+  };
+}
+
+function summarizeGenerator(sections) {
+  const sectionList = Object.values(sections || {});
+  const llmSections = sectionList.filter((section) => section?.generator?.mode === "llm");
+  const firstLlm = llmSections[0]?.generator;
+  const firstGenerator = sectionList.find((section) => section?.generator)?.generator;
+
+  const llmSectionCount = llmSections.length;
+  const fallbackSectionCount = Math.max(sectionList.length - llmSectionCount, 0);
+  const mode =
+    llmSectionCount === sectionList.length && sectionList.length > 0
+      ? "llm"
+      : llmSectionCount > 0
+        ? "mixed"
+        : "deterministic_fallback";
+
+  return {
+    mode,
+    provider: firstLlm?.provider || null,
+    model: firstLlm?.model || null,
+    requestedProvider: firstLlm?.provider || null,
+    requestedModel: firstLlm?.model || null,
+    version: firstGenerator?.version || GENERATOR_VERSION,
+    llmRequested: Boolean(firstLlm || firstGenerator?.providerError),
+    llmSectionCount,
+    fallbackSectionCount,
+  };
+}
+
 async function withRetry(fn, label) {
   let lastErr;
   for (let attempt = 1; attempt <= LLM_MAX_RETRIES; attempt++) {
@@ -95,13 +519,15 @@ async function withRetry(fn, label) {
       return await fn();
     } catch (err) {
       lastErr = err;
+      const status = err?.status || err?.response?.status;
+      const code = err?.code || err?.response?.data?.error?.code || err?.response?.data?.error?.type;
       const isRetryable =
-        err?.status >= 500 ||
-        err?.status === 429 ||
+        status >= 500 ||
+        (status === 429 && code !== "insufficient_quota") ||
         err?.code === "ECONNRESET" ||
         err?.code === "ETIMEDOUT";
       if (!isRetryable || attempt === LLM_MAX_RETRIES) throw err;
-      const delay = LLM_RETRY_BASE_MS * 2 ** (attempt - 1);
+      const delay = providerRetryAfterMs(err) || LLM_RETRY_BASE_MS * 2 ** (attempt - 1);
       logger.warn(`${label} attempt ${attempt} failed (${err.message}); retrying in ${delay}ms`);
       await new Promise((r) => setTimeout(r, delay));
     }
@@ -109,61 +535,158 @@ async function withRetry(fn, label) {
   throw lastErr;
 }
 
-async function generateSection(client, section, evidence) {
+async function generateAllSections(llmClient, evidence) {
+  if (!llmClient) {
+    return POC_SECTIONS.map((section) => {
+      const fallback = fallbackSection(section, relevantEvidence(evidence, section.fieldHints));
+      return {
+        section: section.name,
+        title: section.title,
+        content: fallback.content,
+        citations: fallback.citations,
+        sufficientEvidence: !fallback.insufficientEvidenceReason,
+        insufficientEvidenceReason: fallback.insufficientEvidenceReason,
+        generatedAt: new Date().toISOString(),
+        editedByClinician: false,
+        generator: {
+          mode: "deterministic_fallback",
+          version: GENERATOR_VERSION,
+          model: null,
+        },
+      };
+    });
+  }
+
+  try {
+    const completion = await withRetry(
+      () => llmClient.generateJson(allSectionsPrompt(evidenceToPrompt(evidence))),
+      `LLM[${llmClient.provider}:all_sections]`,
+    );
+    const parsed = parseJsonPayload(completion);
+    const parsedSections = parsed?.sections && typeof parsed.sections === "object"
+      ? parsed.sections
+      : parsed;
+
+    if (!parsedSections || typeof parsedSections !== "object") {
+      throw new AppError("LLM did not return a sections object", 502);
+    }
+
+    return POC_SECTIONS.map((section) => {
+      const rawSection = parsedSections[section.name];
+      if (!rawSection) {
+        const fallback = fallbackSection(section, relevantEvidence(evidence, section.fieldHints));
+        return {
+          section: section.name,
+          title: section.title,
+          content: fallback.content,
+          citations: fallback.citations,
+          sufficientEvidence: !fallback.insufficientEvidenceReason,
+          insufficientEvidenceReason: fallback.insufficientEvidenceReason,
+          generatedAt: new Date().toISOString(),
+          editedByClinician: false,
+          generator: {
+            mode: "deterministic_fallback",
+            version: GENERATOR_VERSION,
+            model: null,
+            fallbackReason: "missing_llm_section",
+          },
+        };
+      }
+      return buildLlmSectionResult(llmClient, section, rawSection, evidence);
+    });
+  } catch (err) {
+    const errorSummary = providerErrorSummary(err);
+    logger.warn("LLM unavailable for all POC sections; using deterministic fallback", {
+      provider: llmClient.provider,
+      ...errorSummary,
+    });
+
+    return POC_SECTIONS.map((section) => {
+      const fallback = fallbackSection(section, relevantEvidence(evidence, section.fieldHints));
+      return {
+        section: section.name,
+        title: section.title,
+        content: fallback.content,
+        citations: fallback.citations,
+        sufficientEvidence: !fallback.insufficientEvidenceReason,
+        insufficientEvidenceReason: fallback.insufficientEvidenceReason,
+        generatedAt: new Date().toISOString(),
+        editedByClinician: false,
+        generator: {
+          mode: "deterministic_fallback",
+          version: GENERATOR_VERSION,
+          model: null,
+          fallbackReason: "llm_unavailable",
+          providerError: errorSummary,
+        },
+      };
+    });
+  }
+}
+
+async function generateSection(llmClient, section, evidence) {
   const localEvidence = relevantEvidence(evidence, section.fieldHints);
   const evidenceText = evidenceToPrompt(localEvidence);
 
-  if (!client) {
+  if (!llmClient) {
+    const fallback = fallbackSection(section, localEvidence);
     return {
       section: section.name,
       title: section.title,
-      content: `[Stub] ${section.title} draft — set OPENAI_API_KEY to enable LLM generation.\n\nEvidence available:\n${evidenceText}`,
-      citations: localEvidence.map((e) => ({
-        index: e.index,
-        fieldName: e.fieldName,
-        value: e.value,
-        sourcePage: e.sourcePage,
-      })),
-      sufficientEvidence: localEvidence.length > 0,
+      content: fallback.content,
+      citations: fallback.citations,
+      sufficientEvidence: !fallback.insufficientEvidenceReason,
+      insufficientEvidenceReason: fallback.insufficientEvidenceReason,
       generatedAt: new Date().toISOString(),
       editedByClinician: false,
+      generator: {
+        mode: "deterministic_fallback",
+        version: GENERATOR_VERSION,
+        model: null,
+      },
     };
   }
 
-  const completion = await withRetry(
-    () =>
-      client.chat.completions.create(
-        {
-          model: config.openaiModel,
-          temperature: 0.3,
-          max_tokens: 600,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a clinical documentation assistant for home-health Plans of Care. " +
-                "Write the requested section using ONLY the numbered evidence provided. " +
-                "Cite supporting evidence inline using [N] notation matching the evidence numbers. " +
-                "If evidence is insufficient, write exactly: 'Insufficient evidence to draft this section.'",
-            },
-            {
-              role: "user",
-              content:
-                `Section: ${section.title}\n\n` +
-                `Evidence:\n${evidenceText || "(none)"}\n\n` +
-                `Write the ${section.title} section. Be concise, clinical, and cite evidence as [N].`,
-            },
-          ],
-        },
-        { timeout: SECTION_TIMEOUT_MS },
-      ),
-    `LLM[${section.name}]`,
-  );
+  let completion;
+  try {
+    completion = await withRetry(
+      () => llmClient.generateJson(sectionPrompt(section, evidenceText)),
+      `LLM[${llmClient.provider}:${section.name}]`,
+    );
+  } catch (err) {
+    const errorSummary = providerErrorSummary(err);
+    logger.warn(`LLM unavailable for ${section.name}; using deterministic fallback`, {
+      provider: llmClient.provider,
+      ...errorSummary,
+    });
+    const fallback = fallbackSection(section, localEvidence);
+    return {
+      section: section.name,
+      title: section.title,
+      content: fallback.content,
+      citations: fallback.citations,
+      sufficientEvidence: !fallback.insufficientEvidenceReason,
+      insufficientEvidenceReason: fallback.insufficientEvidenceReason,
+      generatedAt: new Date().toISOString(),
+      editedByClinician: false,
+      generator: {
+        mode: "deterministic_fallback",
+        version: GENERATOR_VERSION,
+        model: null,
+        fallbackReason: "llm_unavailable",
+        providerError: errorSummary,
+      },
+    };
+  }
 
-  const content = completion.choices[0]?.message?.content?.trim() || "";
+  const parsed = parseJsonSection(completion);
+  const content = parsed.content;
   const citedIndices = extractCitedIndices(content, localEvidence);
   const indexMap = new Map(localEvidence.map((e) => [e.index, e]));
-  const citations = citedIndices.map((i) => {
+  const citationIndices = citedIndices.length > 0
+    ? citedIndices
+    : localEvidence.slice(0, content.toLowerCase().includes("insufficient evidence") ? 0 : 2).map((e) => e.index);
+  const citations = citationIndices.map((i) => {
     const e = indexMap.get(i);
     return {
       index: e.index,
@@ -181,8 +704,15 @@ async function generateSection(client, section, evidence) {
     sufficientEvidence: !content
       .toLowerCase()
       .includes("insufficient evidence"),
+    insufficientEvidenceReason: parsed.insufficientEvidenceReason,
     generatedAt: new Date().toISOString(),
     editedByClinician: false,
+    generator: {
+      mode: "llm",
+      provider: llmClient.provider,
+      model: llmClient.model,
+      version: GENERATOR_VERSION,
+    },
   };
 }
 
@@ -192,9 +722,9 @@ async function generatePoc(documentId, userId) {
     include: { extractedFields: true },
   });
   if (!doc) throw new AppError("Document not found", 404);
-  if (!["APPROVED", "POC_GENERATED"].includes(doc.status)) {
+  if (!GENERATABLE_DOCUMENT_STATUSES.includes(doc.status)) {
     throw new AppError(
-      `Document must be APPROVED before POC generation (current: ${doc.status})`,
+      `Document must be approved before POC generation (current: ${doc.status})`,
       409,
     );
   }
@@ -207,13 +737,29 @@ async function generatePoc(documentId, userId) {
     );
   }
 
-  const client = config.openaiKey ? new OpenAI({ apiKey: config.openaiKey }) : null;
+  const llmClient = createLlmClient();
 
-  const sectionResults = await Promise.all(
-    POC_SECTIONS.map((section) => generateSection(client, section, evidence)),
-  );
+  const sectionResults = await generateAllSections(llmClient, evidence);
 
   const sections = Object.fromEntries(sectionResults.map((s) => [s.section, s]));
+  const llmSectionCount = sectionResults.filter((s) => s.generator?.mode === "llm").length;
+  const generatorMode =
+    llmSectionCount === sectionResults.length
+      ? "llm"
+      : llmSectionCount > 0
+        ? "mixed"
+        : "deterministic_fallback";
+  const generatorMeta = {
+    mode: generatorMode,
+    provider: llmSectionCount > 0 ? llmClient?.provider : null,
+    model: llmSectionCount > 0 ? llmClient?.model : null,
+    requestedProvider: llmClient?.provider || null,
+    requestedModel: llmClient?.model || null,
+    version: GENERATOR_VERSION,
+    llmRequested: Boolean(llmClient),
+    llmSectionCount,
+    fallbackSectionCount: sectionResults.length - llmSectionCount,
+  };
 
   const latest = await prisma.generatedPoc.findFirst({
     where: { documentId },
@@ -244,7 +790,7 @@ async function generatePoc(documentId, userId) {
   await logAction("poc.generate", userId, documentId, {
     version: nextVersion,
     sectionCount: sectionResults.length,
-    llmEnabled: Boolean(client),
+    generator: generatorMeta,
   });
   logger.info(
     `POC generated: doc=${documentId} version=${nextVersion} sections=${sectionResults.length}`,
@@ -257,7 +803,17 @@ async function generatePoc(documentId, userId) {
     parentVersionId: created.parentVersionId,
     status: created.status,
     generatedAt: created.generatedAt,
+    generator: generatorMeta,
     sections,
+  };
+}
+
+async function generateLatestPoc(user) {
+  const document = await findLatestAccessiblePocDocument(user);
+  const result = await generatePoc(document.id, user.id);
+  return {
+    ...result,
+    selectedDocument: document,
   };
 }
 
@@ -267,7 +823,54 @@ async function getLatestPoc(documentId) {
     orderBy: { version: "desc" },
   });
   if (!poc) throw new AppError("POC not found", 404);
-  return poc;
+  return {
+    ...poc,
+    generator: summarizeGenerator(poc.sections),
+  };
+}
+
+async function getLatestAccessiblePoc(user) {
+  const documents = await prisma.document.findMany({
+    where: buildClinicalDocumentScope(user),
+    orderBy: [
+      { updatedAt: "desc" },
+      { uploadedAt: "desc" },
+    ],
+    take: 50,
+    select: {
+      id: true,
+      filename: true,
+      fileType: true,
+      status: true,
+      uploadedAt: true,
+      updatedAt: true,
+      patientId: true,
+      patient: {
+        select: {
+          id: true,
+          mrn: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
+
+  const documentIds = documents.map((document) => document.id);
+  if (documentIds.length === 0) {
+    throw new AppError("POC not found", 404);
+  }
+
+  const poc = await prisma.generatedPoc.findFirst({
+    where: { documentId: { in: documentIds } },
+    orderBy: { generatedAt: "desc" },
+  });
+  if (!poc) throw new AppError("POC not found", 404);
+
+  return {
+    ...poc,
+    generator: summarizeGenerator(poc.sections),
+    selectedDocument: documents.find((document) => document.id === poc.documentId) || null,
+  };
 }
 
 async function listPocVersions(documentId) {
@@ -358,7 +961,9 @@ async function approvePoc(documentId, userId) {
 
 module.exports = {
   generatePoc,
+  generateLatestPoc,
   getLatestPoc,
+  getLatestAccessiblePoc,
   listPocVersions,
   getPocVersion,
   editPocDraft,
@@ -366,4 +971,6 @@ module.exports = {
   // exported for tests
   buildEvidence,
   POC_SECTIONS,
+  parseJsonSection,
+  fallbackSection,
 };

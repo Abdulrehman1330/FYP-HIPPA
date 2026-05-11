@@ -1,0 +1,114 @@
+{
+  "dataset_name": "synthetic_rag_evidence_demo",
+  "description": "Synthetic/de-identified approved OASIS and Plan of Care evidence for Abdul's clinician RAG assistant prototype.",
+  "evidence": [
+    {
+      "source_id": "OASIS-SYN001-DX",
+      "patient_id": "SYN-001",
+      "section": "diagnosis",
+      "text": "Approved OASIS field: primary diagnosis is congestive heart failure with hypertension listed as a comorbidity.",
+      "approved": true,
+      "source_type": "approved_oasis_field",
+      "metadata": {
+        "form": "OASIS-E2",
+        "field": "primary_diagnosis"
+      }
+    },
+    {
+      "source_id": "OASIS-SYN001-HOSP",
+      "patient_id": "SYN-001",
+      "section": "hospitalization",
+      "text": "Approved review note: patient was discharged after a recent hospitalization for shortness of breath and fluid overload.",
+      "approved": true,
+      "source_type": "approved_review_note",
+      "metadata": {
+        "form": "OASIS-E2",
+        "field": "recent_inpatient_discharge"
+      }
+    },
+    {
+      "source_id": "OASIS-SYN001-MOB",
+      "patient_id": "SYN-001",
+      "section": "mobility",
+      "text": "Approved OASIS mobility field: patient requires a walker and one-person assistance for safe transfers and ambulation.",
+      "approved": true,
+      "source_type": "approved_oasis_field",
+      "metadata": {
+        "form": "OASIS-E2",
+        "field": "ambulation_locomotion"
+      }
+    },
+    {
+      "source_id": "OASIS-SYN001-SAFE",
+      "patient_id": "SYN-001",
+      "section": "safety",
+      "text": "Approved safety assessment: patient is at high fall risk due to impaired balance, recent weakness, and cluttered bedroom pathway.",
+      "approved": true,
+      "source_type": "approved_review_note",
+      "metadata": {
+        "form": "Home Safety Review",
+        "field": "fall_risk"
+      }
+    },
+    {
+      "source_id": "POC-SYN001-MED",
+      "patient_id": "SYN-001",
+      "section": "medications",
+      "text": "Approved Plan of Care snippet: medication reconciliation is required because the patient reports confusion about morning and evening doses.",
+      "approved": true,
+      "source_type": "approved_poc_snippet",
+      "metadata": {
+        "form": "Plan of Care",
+        "field": "medication_management"
+      }
+    },
+    {
+      "source_id": "POC-SYN001-INT",
+      "patient_id": "SYN-001",
+      "section": "interventions",
+      "text": "Approved Plan of Care intervention: provide fall-prevention education, review walker use, monitor cardiopulmonary symptoms, and reinforce medication schedule.",
+      "approved": true,
+      "source_type": "approved_poc_snippet",
+      "metadata": {
+        "form": "Plan of Care",
+        "field": "skilled_nursing_interventions"
+      }
+    },
+    {
+      "source_id": "POC-SYN001-GOAL",
+      "patient_id": "SYN-001",
+      "section": "goals",
+      "text": "Approved draft goal: patient will verbalize fall-prevention steps and demonstrate safe walker positioning during the care episode.",
+      "approved": true,
+      "source_type": "approved_poc_snippet",
+      "metadata": {
+        "form": "Plan of Care",
+        "field": "patient_goal"
+      }
+    },
+    {
+      "source_id": "OCR-SYN001-RAW-INSULIN",
+      "patient_id": "SYN-001",
+      "section": "medications",
+      "text": "Unapproved raw OCR text mentions insulin sliding scale but this was not validated by a clinician.",
+      "approved": false,
+      "source_type": "raw_ocr",
+      "metadata": {
+        "form": "Medication List",
+        "field": "unverified_ocr_text"
+      }
+    },
+    {
+      "source_id": "OASIS-SYN002-DX",
+      "patient_id": "SYN-002",
+      "section": "diagnosis",
+      "text": "Approved OASIS field: primary diagnosis is chronic obstructive pulmonary disease.",
+      "approved": true,
+      "source_type": "approved_oasis_field",
+      "metadata": {
+        "form": "OASIS-E2",
+        "field": "primary_diagnosis"
+      }
+    }
+  ]
+}

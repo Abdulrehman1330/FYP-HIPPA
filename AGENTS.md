@@ -1,6 +1,6 @@
 # Agent Working Methodology
 
-**Last Updated:** 2026-04-03
+**Last Updated:** 2026-05-06
 **Project:** HIPAA-Compliant Home Health and Hospice AI Platform
 **Purpose:** Document the working method for planning, building, testing, and tracking the Final Year Project consistently across sessions
 
@@ -89,6 +89,21 @@ Every meaningful task should follow this cycle:
 5. DOCUMENT
 6. UPDATE PROGRESS
 ```
+
+### Explanation and Knowledge Transfer Rule
+
+For every meaningful task, the assistant must explain the work clearly to Abdul Rehman so he understands the know-how, not only the final output.
+
+Each final response should include, when relevant:
+
+1. What was changed or created
+2. Why it was needed
+3. How it works at a practical level
+4. Which files, diagrams, models, or documents were affected
+5. How Abdul can explain or demonstrate it in the FYP presentation
+6. Any limitations, assumptions, or next steps
+
+The explanation should be concise but complete enough that Abdul can answer supervisor questions about architecture, security, RAG, OCR, the prediction model, and implementation decisions. Avoid hiding important technical reasoning behind vague statements such as "updated the code" or "fixed the issue."
 
 ### Step 1: Review Progress
 

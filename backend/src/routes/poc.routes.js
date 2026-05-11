@@ -7,6 +7,21 @@ const router = Router();
 
 const writeGuard = [authMiddleware, requireRole("CLINICIAN", "ADMIN")];
 const readGuard = [authMiddleware, requireRole("CLINICIAN", "ADMIN", "DOCTOR", "PATIENT")];
+const clinicalReadGuard = [authMiddleware, requireRole("CLINICIAN", "ADMIN", "DOCTOR")];
+
+router.post("/poc/generate-latest", ...writeGuard, async (req, res, next) => {
+  try {
+    const result = await pocService.generateLatestPoc(req.user);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.get("/poc/latest", ...clinicalReadGuard, async (req, res, next) => {
+  try {
+    const poc = await pocService.getLatestAccessiblePoc(req.user);
+    res.json({ success: true, data: poc });
+  } catch (err) { next(err); }
+});
 
 router.post("/poc/generate/:documentId", ...writeGuard, async (req, res, next) => {
   try {

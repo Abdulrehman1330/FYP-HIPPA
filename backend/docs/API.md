@@ -207,14 +207,45 @@ Reviewer-time metrics.
 
 POC generation requires the document to be `APPROVED`.
 
+### `POST /poc/generate-latest`
+Generates a draft from the latest accessible approved/POC/risk-scored document with extracted fields.
+This endpoint is used when the clinician opens the Plan of Care page from the sidebar without a selected `documentId`.
+It applies the same clinic/caseload scoping as document access and returns `selectedDocument` metadata with the generated POC.
+
+### `GET /poc/latest`
+Returns the latest generated POC available to the logged-in clinician/admin/doctor. This lets the sidebar Plan of Care page load real saved data instead of demo/mock text.
+
 ### `POST /poc/generate/:documentId`
 Generates a new versioned draft. Each call creates `version = previous + 1`.
-Citations pulled from extracted fields with `[N]` indexing.
+Citations are pulled from approved extracted fields with `[N]` indexing.
+
+Generation mode:
+- `LLM_PROVIDER` can be `auto`, `gemini`, `anthropic`, `openai`, or `none`.
+- In `auto` mode, the backend uses the first configured provider key in this order: Gemini, Anthropic, then OpenAI.
+- Gemini uses `GEMINI_API_KEY` and `GEMINI_MODEL`.
+- Anthropic uses `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and `ANTHROPIC_VERSION`.
+- OpenAI uses `OPENAI_API_KEY` and `OPENAI_MODEL`.
+- The backend requests all POC sections in one LLM call to reduce free-tier quota usage, then falls back per section if the provider is unavailable or returns incomplete data.
+- If the provider returns a retry-after quota message, the backend waits before retrying instead of immediately falling back.
+- If no provider key is configured, or the selected provider is unavailable, the backend uses a deterministic fallback generator so local/student testing still works without API cost.
+- All generated sections are drafts only. A clinician/admin must review, edit, and approve before finalization.
+- The LLM prompt is constrained to approved evidence only. If evidence is missing, the section returns an insufficient-evidence warning instead of inventing clinical content.
 
 ```json
 { "success": true, "data": {
   "id": "...", "documentId": "...", "version": 1, "parentVersionId": null,
   "status": "draft", "generatedAt": "...",
+  "generator": {
+    "mode": "llm",
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "requestedProvider": "gemini",
+    "requestedModel": "gemini-2.5-flash",
+    "version": "poc-llm-v1",
+    "llmRequested": true,
+    "llmSectionCount": 7,
+    "fallbackSectionCount": 0
+  },
   "sections": {
     "patient_summary": {
       "section": "patient_summary",
@@ -225,8 +256,15 @@ Citations pulled from extracted fields with `[N]` indexing.
         { "index": 2, "fieldName": "date_of_birth", "value": "12/17/1962", "sourcePage": "page 1" }
       ],
       "sufficientEvidence": true,
+      "insufficientEvidenceReason": null,
       "editedByClinician": false,
-      "generatedAt": "..."
+      "generatedAt": "...",
+      "generator": {
+        "mode": "llm",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "version": "poc-llm-v1"
+      }
     },
     "problems": {...}, "goals": {...}, "interventions": {...},
     "medication_management": {...}, "safety_concerns": {...}, "follow_up": {...}

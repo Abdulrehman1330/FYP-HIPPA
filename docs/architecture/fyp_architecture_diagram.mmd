@@ -1,0 +1,104 @@
+flowchart TB
+    userClinician["Clinician / Reviewer"]
+    userAdmin["Admin"]
+
+    subgraph env["Secure Application Environment"]
+        direction TB
+
+        subgraph frontend["Frontend Layer"]
+            web["Next.js / React Web App<br/>Login, Upload, Review, POC Editor, Risk Dashboard"]
+        end
+
+        subgraph api["API and Workflow Layer"]
+            auth["Authentication + RBAC"]
+            backend["FastAPI Backend API"]
+            upload["Document Upload Service"]
+            review["Human-in-the-Loop Review<br/>Accept / Edit / Reject"]
+            auditSvc["Audit Logging Service"]
+        end
+
+        subgraph ai["Open-Source AI Processing Layer"]
+            preprocess["OpenCV Preprocessing<br/>Grayscale, Denoise, Deskew, Threshold, Crop"]
+            ocr["Tesseract OCR<br/>Local Text Extraction"]
+            extract["Rule-Based Key Information Extraction<br/>Regex + Field Dictionary<br/>OASIS-E2 + POC Fields"]
+            validate["Validation Engine<br/>Required Fields, Dates, ICD-10, Confidence"]
+            indexer["RAG Retrieval Indexer<br/>Approved Fields + Source Snippets<br/>FAISS / Chroma / TF-IDF Fallback"]
+            rag["RAG Service<br/>Top-k Evidence Retrieval<br/>Source IDs + Scores"]
+            poc["RAG-Based POC Generator<br/>Retrieved Evidence + Source Citations<br/>Human Review Required"]
+            risk["Scikit-learn Risk Model<br/>Logistic Regression / Random Forest<br/>Optional XGBoost or LightGBM"]
+            explain["SHAP Explainability<br/>Top Risk Factors"]
+        end
+
+        subgraph data["Data Layer"]
+            files[("Secure File Storage<br/>Encrypted Raw Documents")]
+            db[("PostgreSQL<br/>Approved Structured Records")]
+            snippets[("Source Snippets Store<br/>Field Evidence for RAG Drafts")]
+            vector[("Vector / Retrieval Store<br/>Embeddings or TF-IDF Index<br/>Source IDs + Metadata")]
+            artifacts[("Model Artifacts<br/>Models, Metrics, Encoders")]
+            logs[("Audit Logs<br/>User Actions + Model Outputs")]
+            secrets["Secrets Manager / Environment Config<br/>Keys + Credentials"]
+        end
+
+        subgraph optional["Optional Cloud Benchmark"]
+            managedDoc["Managed Document AI<br/>Not Core MVP"]
+            hostedLLM["Hosted LLM Backend<br/>Generator Provider Only<br/>RAG Remains Core"]
+        end
+    end
+
+    userClinician --> web
+    userAdmin --> web
+    web --> auth
+    web --> backend
+    auth --> backend
+    backend --> upload
+    upload --> files
+    files --> preprocess
+    preprocess --> ocr
+    ocr --> extract
+    extract --> validate
+    validate --> review
+    review --> db
+    review --> snippets
+    db --> indexer
+    snippets --> indexer
+    indexer --> vector
+    db --> rag
+    vector --> rag
+    rag --> poc
+    poc --> web
+    db --> risk
+    artifacts --> risk
+    risk --> explain
+    risk --> web
+    explain --> web
+
+    backend --> auditSvc
+    auth --> auditSvc
+    upload --> auditSvc
+    review --> auditSvc
+    rag --> auditSvc
+    poc --> auditSvc
+    risk --> auditSvc
+    auditSvc --> logs
+
+    secrets -.-> backend
+    secrets -.-> db
+    secrets -.-> files
+    preprocess -.-> managedDoc
+    rag -.-> hostedLLM
+
+    classDef user fill:#F7F7F7,stroke:#333,stroke-width:1.5px,color:#111;
+    classDef frontend fill:#D8EAFE,stroke:#1D4ED8,stroke-width:1.5px,color:#111;
+    classDef api fill:#E0F2FE,stroke:#0369A1,stroke-width:1.5px,color:#111;
+    classDef ai fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#111;
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#111;
+    classDef security fill:#FEE2E2,stroke:#B91C1C,stroke-width:1.5px,color:#111;
+    classDef optional fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#111;
+
+    class userClinician,userAdmin user;
+    class web frontend;
+    class auth,backend,upload,review,auditSvc api;
+    class preprocess,ocr,extract,validate,indexer,rag,poc,risk,explain ai;
+    class files,db,snippets,vector,artifacts,logs data;
+    class secrets security;
+    class managedDoc,hostedLLM optional;

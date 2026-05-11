@@ -111,7 +111,14 @@ function App() {
           <div className="brand-name">Hippa<b>Health</b></div>
         </GlassCard>
 
-        <Topbar user={user} role={role} onChangePassword={() => setVoluntaryPwdChange(true)} onSignOut={logout} />
+        <Topbar
+          user={user}
+          role={role}
+          allowedNav={allowedNav}
+          goto={goto}
+          onChangePassword={() => setVoluntaryPwdChange(true)}
+          onSignOut={logout}
+        />
 
         <Sidebar
           allowedNav={allowedNav}
@@ -136,10 +143,10 @@ function App() {
             {screen === 'dashboard' && <Dashboard user={user} role={role} goto={goto} />}
             {screen === 'upload' && (role === 'CLINICIAN' || role === 'ADMIN') && <UploadScreen goto={goto} addToast={addToast} />}
             {screen === 'review' && (role === 'CLINICIAN' || role === 'ADMIN') && <ReviewScreen goto={goto} params={params} addToast={addToast} />}
-            {screen === 'poc' && <PocScreen goto={goto} params={params} addToast={addToast} />}
-            {screen === 'risk' && <RiskScreen goto={goto} addToast={addToast} />}
+            {screen === 'poc' && <PocScreen goto={goto} params={{ ...params, role }} addToast={addToast} />}
+            {screen === 'risk' && <RiskScreen goto={goto} addToast={addToast} params={{ ...params, role }} />}
             {screen === 'patients' && role !== 'PATIENT' && role !== 'SUPER_ADMIN' && <PatientsScreen goto={goto} role={role} addToast={addToast} />}
-            {screen === 'patient' && <PatientScreen goto={goto} params={params} role={role} />}
+            {screen === 'patient' && <PatientScreen goto={goto} params={params} role={role} user={user} />}
             {screen === 'mobile' && <MobileShowcase goto={goto} />}
           </div>
         </GlassCard>
