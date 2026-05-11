@@ -6,6 +6,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 
 - Keep the FYP Contabo deployment isolated from Ash Systems infrastructure: use its own app path, Compose project, Docker network, Postgres volume/database, and project-only secrets. On the shared VPS it currently runs at `/home/deploy/hippa-home` because `deploy` has no passwordless sudo; use `/opt/hippa-home` only when sudo/root setup is available.
 - The shared VPS already has an Ash edge Caddy bound to ports `80/443`; do not start a second public Caddy there. Connect the edge Caddy to `hippa_home_private` and route only `hippa-home.duckdns.org` and `hippa-home-api.duckdns.org` to the FYP containers.
+- After changing deployed API keys or runtime env, force-recreate the backend container; writing `.env` alone does not update environment variables inside an already-running container.
 - Do not commit or build from `contabo-vps-access/`; it contains local VPS access material and must remain ignored.
 - Use project-scoped Compose variable names for optional provider keys, such as `HIPPA_HOME_OPENAI_API_KEY`, so generic local shell secrets do not leak into `docker compose config` output.
 - For Vite production builds, set `VITE_API_BASE_URL=https://hippa-home-api.duckdns.org/api/v1`; the dev proxy in `vite.config.js` does not exist after `vite build`.

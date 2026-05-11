@@ -10,6 +10,15 @@
 
 ## Recent Implementation Notes
 
+### 2026-05-12 - Production LLM Env Reload And RAG Database Verification
+
+- Changed: Manually forced the live backend container to recreate with the deployed runtime `.env`, then updated the Contabo GitHub Actions workflow to force-recreate the backend after deploy so future API-key/env changes are loaded.
+- Why: The VPS `.env` contained a Gemini key, but the running backend container was stale and still had `LLM_PROVIDER=none`, so POC generation used deterministic fallback without attempting the LLM.
+- Current status: Live POC generation now reports `mode=llm`, `provider=gemini`, `llmSectionCount=7`, and `fallbackSectionCount=0`. RAG was verified to read approved patient evidence from PostgreSQL through Prisma, including extracted fields and latest generated POC sections.
+- Validation: Live backend env check showed `LLM_PROVIDER=auto` and Gemini key present after recreate. A live generation test produced an all-LLM POC. A live RAG test returned database-backed citations pointing to generated POC/document IDs.
+- Work left: Push the workflow fix and confirm the next GitHub Actions deploy succeeds with backend forced recreation.
+- Blockers or risks: Gemini can still fall back later if the provider key is invalid, quota-limited, or removed from GitHub secrets.
+
 ### 2026-05-12 - Patient-Scoped Clinical Upload, Review, And POC Flow
 
 - Changed: Clinical upload now requires a selected patient and sends `patientId` with the document upload. The POC screen now asks clinicians/admins/doctors to select the patient and approved source document before generating. Review and dashboard navigation carry `patientId` and `patientName` forward, and the dashboard/review queue no longer falls back to bundled demo records when backend data is empty.

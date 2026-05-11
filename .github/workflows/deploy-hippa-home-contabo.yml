@@ -250,6 +250,7 @@ jobs:
           docker compose --env-file .env run --rm backend npm run db:migrate
           docker compose --env-file .env run --rm backend npm run seed:owner
           docker compose --env-file .env up -d --remove-orphans
+          docker compose --env-file .env up -d --force-recreate --no-deps backend
           docker network connect hippa_home_private ash-health-agent-caddy 2>/dev/null || true
           docker compose --env-file .env ps
           REMOTE
