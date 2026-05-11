@@ -8,6 +8,19 @@
 
 ---
 
+## Recent Implementation Notes
+
+### 2026-05-12 - Patient-Scoped Clinical Upload, Review, And POC Flow
+
+- Changed: Clinical upload now requires a selected patient and sends `patientId` with the document upload. The POC screen now asks clinicians/admins/doctors to select the patient and approved source document before generating. Review and dashboard navigation carry `patientId` and `patientName` forward, and the dashboard/review queue no longer falls back to bundled demo records when backend data is empty.
+- Why: Clinical screens could show Alexander/demo fallback data or generate a Plan of Care from the latest accessible document instead of the intended patient's document.
+- Current status: Upload, review approval, patient detail, and POC generation are patient-scoped. Backend document listing/review detail now include patient context, and POC latest/generate-latest accepts `patientId` filters.
+- Validation: `npm run build` passed in `frontend`. Backend syntax checks passed for `backend/src/routes/poc.routes.js`, `backend/src/services/document.service.js`, `backend/src/services/poc.service.js`, and `backend/src/services/review.service.js`.
+- Work left: Run an authenticated browser smoke test with two real/synthetic patients: upload one document for each, approve both, then confirm POC generation uses the selected patient's selected source document.
+- Blockers or risks: `npm run lint` still fails on existing repo-wide React lint rules such as `react-hooks/set-state-in-effect`; the production build is passing. The configured Ash Systems global memory drive `D:` is unavailable in this workspace, so the project-specific `GLOBAL_MEMORY.md` was updated instead.
+
+---
+
 ## Product Goal
 
 Build a secure web platform for home health and hospice agencies that:

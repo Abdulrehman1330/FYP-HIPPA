@@ -51,7 +51,7 @@ const PatientsScreen = ({ goto, role, addToast }) => {
       ]);
       setDoctors(docs.users || []);
       setClinicians(clins.users || []);
-    } catch (err) { /* ignore */ }
+    } catch { /* ignore */ }
   };
 
   useEffect(() => { refresh(); }, [role]);
@@ -127,7 +127,7 @@ const PatientsScreen = ({ goto, role, addToast }) => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
           {list.map(p => (
-            <GlassCard key={p.id} strong style={{ padding: 18, cursor: 'pointer' }} onClick={() => goto('patient', { patientId: p.id })}>
+            <GlassCard key={p.id} strong style={{ padding: 18, cursor: 'pointer' }} onClick={() => goto('patient', { patientId: p.id, patientName: p.name })}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
                 <Avatar name={p.name} size={40} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -147,6 +147,16 @@ const PatientsScreen = ({ goto, role, addToast }) => {
                 <span>Enrolled {p.enrolledAt}</span>
                 <span>{p.docCount} {p.docCount === 1 ? 'document' : 'documents'}</span>
               </div>
+              {role !== 'DOCTOR' && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }} onClick={(e) => e.stopPropagation()}>
+                  <button className="btn btn--sm btn--ghost" onClick={() => goto('upload', { patientId: p.id, patientName: p.name })}>
+                    <Icon name="upload" size={11} /> Upload
+                  </button>
+                  <button className="btn btn--sm btn--ghost" onClick={() => goto('poc', { patientId: p.id, patientName: p.name })}>
+                    <Icon name="poc" size={11} /> POC
+                  </button>
+                </div>
+              )}
             </GlassCard>
           ))}
         </div>

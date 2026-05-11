@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { GlassCard, GradientButton, Icon, ConfidenceBadge } from '../../components/ui';
-import { documentService } from '../../services';
-import { fieldsFor } from '../../data';
+import { adminService, documentService } from '../../services';
+import api from '../../services/api';
 
-const UploadScreen = ({ goto, addToast }) => {
+const UploadScreen = ({ goto, params, role, addToast }) => {
   const [stage, setStage] = useState("idle");       // idle | uploading | processing | done | error
   const [progress, setProgress] = useState(0);
   const [filename, setFilename] = useState("");
@@ -14,10 +14,51 @@ const UploadScreen = ({ goto, addToast }) => {
   const [docId, setDocId] = useState(null);
   const [pipelineSteps, setPipelineSteps] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [patients, setPatients] = useState([]);
+  const [patientLoading, setPatientLoading] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState(params?.patientId || "");
   const fileInputRef = useRef();
   const timerRef = useRef();
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPatients = async () => {
+      if (role !== 'ADMIN' && role !== 'CLINICIAN') return;
+      setPatientLoading(true);
+      try {
+        const result = role === 'ADMIN'
+          ? await adminService.listPatients({})
+          : (await api.get('/clinician/patients')).data.data;
+        const list = (result?.patients || []).map(adaptPatientOption);
+        if (!cancelled) setPatients(list);
+      } catch (err) {
+        if (!cancelled) addToast?.({ kind: 'danger', text: err.response?.data?.error || 'Failed to load patients' });
+      } finally {
+        if (!cancelled) setPatientLoading(false);
+      }
+    };
+
+    loadPatients();
+    return () => { cancelled = true; };
+  }, [role]);
+
+  useEffect(() => {
+    setSelectedPatientId(params?.patientId || "");
+  }, [params?.patientId]);
+
+  const selectedPatient = patients.find((patient) => patient.id === selectedPatientId);
+  const routePatientName = params?.patientId === selectedPatientId ? params?.patientName : '';
+  const selectedPatientName = selectedPatient?.name || routePatientName || '';
+
   const uploadAndExtract = async (file) => {
+    if (!selectedPatientId) {
+      const msg = "Select a patient before uploading a document";
+      setErrorMsg(msg);
+      addToast({ kind: "danger", text: msg });
+      return;
+    }
+
     setFilename(file.name);
     setStage("uploading");
     setProgress(0);
@@ -34,7 +75,7 @@ const UploadScreen = ({ goto, addToast }) => {
 
     try {
       // 1. Upload
-      const uploadResult = await documentService.upload(file);
+      const uploadResult = await documentService.upload(file, { patientId: selectedPatientId });
       clearInterval(timerRef.current);
       setProgress(100);
       const id = uploadResult.documentId || uploadResult.id;
@@ -79,9 +120,8 @@ const UploadScreen = ({ goto, addToast }) => {
           meta: lowCount > 0 ? `${lowCount} below threshold` : 'All fields above threshold'
         }]);
       } else {
-        // No fields returned from backend — use mock fields as preview
-        setFields(fieldsFor());
-        setPipelineSteps(prev => [...prev, { k: "Validation", warn: true, meta: "4 below threshold" }]);
+        setFields([]);
+        setPipelineSteps(prev => [...prev, { k: "Validation", warn: true, meta: "No structured fields returned by OCR" }]);
       }
 
       setStage("done");
@@ -110,7 +150,7 @@ const UploadScreen = ({ goto, addToast }) => {
 
   const sendToReview = () => {
     addToast({ kind: "ok", text: `Sent to review queue · ${docId || 'DOC'}` });
-    goto("review", { docId: docId });
+    goto("review", { docId, patientId: selectedPatientId, patientName: selectedPatientName });
   };
 
   const filtered = filter === "low" ? fields.filter(f => f.confidence < 0.6) : fields;
@@ -122,6 +162,11 @@ const UploadScreen = ({ goto, addToast }) => {
           <div className="crumb"><span onClick={() => goto("dashboard")} style={{ cursor: "pointer" }}>Workspace</span><Icon name="chev-r" size={12} /><span>Upload</span></div>
           <h1>Upload &amp; <em>extract</em>.</h1>
           <p>Drop a scanned OASIS-E2 PDF or image. Our pipeline runs OCR, parses fields against the OASIS schema, and routes the result to review.</p>
+          {selectedPatientName && (
+            <div className="pill pill--neutral" style={{ width: "fit-content", marginTop: 10 }}>
+              Patient: {selectedPatientName}
+            </div>
+          )}
         </div>
         <div className="actions">
           {stage === "done" && (
@@ -134,6 +179,28 @@ const UploadScreen = ({ goto, addToast }) => {
       </div>
 
       <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={onFileSelect} />
+
+      <GlassCard strong style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 360px) 1fr", gap: 14, alignItems: "center" }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 6 }}>Patient context</div>
+            <select
+              className="input"
+              value={selectedPatientId}
+              onChange={(e) => setSelectedPatientId(e.target.value)}
+              disabled={patientLoading || stage === "uploading" || stage === "processing" || Boolean(docId)}
+            >
+              <option value="">{patientLoading ? "Loading patients..." : "Select patient for this upload"}</option>
+              {patients.map((patient) => (
+                <option key={patient.id} value={patient.id}>{patient.name} · {patient.mrn}</option>
+              ))}
+            </select>
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            Uploads are linked to the selected patient before OCR starts. This prevents extracted fields and generated care plans from being attached to the wrong chart.
+          </div>
+        </div>
+      </GlassCard>
 
       <div style={{ display: "grid", gridTemplateColumns: stage === "done" ? "minmax(0, 380px) 1fr" : "1fr", gap: 14, alignItems: "flex-start" }}>
         {/* DROP ZONE */}
@@ -158,7 +225,7 @@ const UploadScreen = ({ goto, addToast }) => {
                 <div className="display" style={{ fontSize: 24 }}>Drop your <em>OASIS form</em></div>
                 <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>PDF, PNG, or JPEG · up to 10 MB · multi-page supported</div>
                 <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 18 }}>
-                  <GradientButton variant="primary" icon="upload" onClick={() => fileInputRef.current?.click()}>Choose file</GradientButton>
+                  <GradientButton variant="primary" icon="upload" onClick={() => fileInputRef.current?.click()} disabled={!selectedPatientId}>Choose file</GradientButton>
                 </div>
               </>
             )}
@@ -285,6 +352,16 @@ function categorizeField(name) {
   if (['mobility', 'adl', 'functional'].some(k => n.includes(k))) return 'Functional';
   if (['living', 'situation'].some(k => n.includes(k))) return 'Living';
   return 'Other';
+}
+
+function adaptPatientOption(patient) {
+  return {
+    id: patient.id,
+    mrn: patient.mrn || '—',
+    name: patient.user
+      ? `${patient.user.firstName || ''} ${patient.user.lastName || ''}`.trim() || patient.user.email
+      : 'Unnamed patient',
+  };
 }
 
 export default UploadScreen;

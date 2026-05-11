@@ -26,6 +26,10 @@ async function uploadDocument(actingUser, file, { patientId } = {}) {
 
   // Resolve patient & verify scope
   let patient = null;
+  if (!patientId) {
+    throw new AppError('Select a patient before uploading a clinical document', 400);
+  }
+
   if (patientId) {
     patient = await prisma.patient.findFirst({
       where: { id: patientId, clinicId: actingUser.clinicId },
@@ -36,9 +40,6 @@ async function uploadDocument(actingUser, file, { patientId } = {}) {
       throw new AppError('NOT_FOUND', 404);
     }
   }
-  // For backward compat: ADMIN/CLINICIAN may upload without patientId (legacy flow)
-  // until frontend is fully updated; the doc.patientId stays null in that case.
-
   const storageDir = path.resolve(config.storageDir);
   fs.mkdirSync(storageDir, { recursive: true });
   const ext = path.extname(file.originalname);
@@ -86,6 +87,13 @@ async function listDocuments(actingUser, page = 1, limit = 20) {
       select: {
         id: true, filename: true, fileType: true, status: true, sizeBytes: true,
         uploadedAt: true, clinicId: true, patientId: true, userId: true,
+        patient: {
+          select: {
+            id: true,
+            mrn: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
     }),
     prisma.document.count({ where }),

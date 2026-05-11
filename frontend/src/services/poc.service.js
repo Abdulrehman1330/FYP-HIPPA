@@ -8,8 +8,8 @@ const pocService = {
     return data.data || data;
   },
 
-  async generateLatest() {
-    const { data } = await api.post('/poc/generate-latest', {}, {
+  async generateLatest({ patientId } = {}) {
+    const { data } = await api.post('/poc/generate-latest', { patientId }, {
       timeout: 120000, // LLM generation can be slow
     });
     return data.data || data;
@@ -20,8 +20,8 @@ const pocService = {
     return data.data || data;
   },
 
-  async getLatest() {
-    const { data } = await api.get('/poc/latest');
+  async getLatest({ patientId } = {}) {
+    const { data } = await api.get('/poc/latest', { params: patientId ? { patientId } : {} });
     return data.data || data;
   },
 

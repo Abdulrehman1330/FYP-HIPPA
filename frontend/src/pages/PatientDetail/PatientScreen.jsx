@@ -95,11 +95,23 @@ const PatientScreen = ({ goto, params, role, user }) => {
       return;
     }
 
-    // If the ID looks like a backend UUID, load from API
+    // Backend patient IDs must be loaded through patient endpoints, not document endpoints.
     if (pid) {
-      documentService.get(pid)
-        .then((doc) => {
-          const extractedFields = doc.extractedFields || [];
+      patientService.getClinicalPatient(pid, role)
+        .then(async (profile) => {
+          const documents = profile.documents || [];
+          let extractedFields = [];
+          let latestDoc = null;
+
+          if (documents[0]?.id) {
+            try {
+              latestDoc = await documentService.get(documents[0].id);
+              extractedFields = latestDoc.extractedFields || [];
+            } catch {
+              extractedFields = [];
+            }
+          }
+
           const nameField = extractedFields.find(f => f.fieldName === 'patient_name');
           const dobField = extractedFields.find(f => f.fieldName === 'date_of_birth');
           const dxField = extractedFields.find(f => f.fieldName === 'primary_diagnosis');
@@ -110,26 +122,30 @@ const PatientScreen = ({ goto, params, role, user }) => {
 
           setPatient({
             id: pid,
-            name: nameField?.fieldValue || 'Unknown Patient',
-            dob: dobField?.fieldValue || '—',
+            name: displayName(profile.user, params?.patientName || nameField?.fieldValue || 'Unknown Patient'),
+            dob: profile.dateOfBirth ? formatDate(profile.dateOfBirth) : dobField?.fieldValue || '—',
             sex: '—',
             state: stateField?.fieldValue || '—',
             zip: zipField?.fieldValue || '—',
             soc: socField?.fieldValue || '—',
             primary_dx: icdField ? `${icdField.fieldValue} — ${dxField?.fieldValue || ''}` : dxField?.fieldValue || '—',
             secondary: [],
-            risk: doc.riskScore?.riskScore || 0,
-            riskClass: doc.riskScore?.riskClass || 'low',
-            docs: 1,
+            risk: latestDoc?.riskScore?.riskScore || 0,
+            riskClass: latestDoc?.riskScore?.riskClass || 'not scored',
+            docs: documents.length,
+            careTeam: [
+              profile.primaryDoctor && { name: displayName(profile.primaryDoctor), role: 'Primary doctor', primary: true },
+              profile.primaryClinician && { name: displayName(profile.primaryClinician), role: 'Primary clinician' },
+            ].filter(Boolean),
           });
-          setDocs([{
+          setDocs(documents.map((doc) => ({
             id: doc.id,
             filename: doc.filename,
             pages: 1,
             status: doc.status,
-            uploadedBy: doc.user ? `${doc.user.firstName} ${doc.user.lastName}` : 'Unknown',
+            uploadedAt: doc.uploadedAt,
             confAvg: extractedFields.length > 0 ? extractedFields.reduce((a, f) => a + f.confidence, 0) / extractedFields.length : 0,
-          }]);
+          })));
           setFields(extractedFields.map(f => ({
             key: f.fieldName,
             label: f.fieldName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -140,20 +156,47 @@ const PatientScreen = ({ goto, params, role, user }) => {
           })));
         })
         .catch(() => {
-          // Final fallback
-          setPatient(MOCK_PATIENTS[0]);
-          setDocs(MOCK_DOCS.filter(d => d.patientId === MOCK_PATIENTS[0].id));
-          setFields(fieldsFor());
+          setPatient({
+            id: pid,
+            name: params?.patientName || 'Patient unavailable',
+            dob: '—',
+            sex: '—',
+            state: '—',
+            zip: '—',
+            soc: '—',
+            primary_dx: 'Unable to load patient record from backend',
+            secondary: [],
+            risk: 0,
+            riskClass: 'not scored',
+            docs: 0,
+            careTeam: [],
+          });
+          setDocs([]);
+          setFields([]);
         })
         .finally(() => setLoading(false));
     } else {
-      setPatient(MOCK_PATIENTS[0]);
-      setDocs(MOCK_DOCS.filter(d => d.patientId === MOCK_PATIENTS[0].id));
-      setFields(fieldsFor());
+      setPatient({
+        id: 'unknown',
+        name: 'No patient selected',
+        dob: '—',
+        sex: '—',
+        state: '—',
+        zip: '—',
+        soc: '—',
+        primary_dx: 'Select a patient from the Patients screen',
+        secondary: [],
+        risk: 0,
+        riskClass: 'not scored',
+        docs: 0,
+        careTeam: [],
+      });
+      setDocs([]);
+      setFields([]);
       setLoading(false);
     }
     return () => { cancelled = true; };
-  }, [params?.patientId, params?.id, patientReadOnly, user?.id, user?.name]);
+  }, [params?.patientId, params?.id, params?.patientName, patientReadOnly, role, user?.id, user?.name]);
 
   if (loading || !patient) {
     return (
@@ -185,8 +228,8 @@ const PatientScreen = ({ goto, params, role, user }) => {
         </div>
         {!patientReadOnly && (
           <div className="actions">
-            <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload")}>New document</GradientButton>
-            <GradientButton size="sm" variant="primary" icon="poc" onClick={() => goto("poc")}>Open POC</GradientButton>
+            <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload", { patientId: patient.id, patientName: patient.name })}>New document</GradientButton>
+            <GradientButton size="sm" variant="primary" icon="poc" onClick={() => goto("poc", { patientId: patient.id, patientName: patient.name })}>Open POC</GradientButton>
           </div>
         )}
         {patientReadOnly && (
@@ -237,11 +280,11 @@ const PatientScreen = ({ goto, params, role, user }) => {
                   <div className="eyebrow">Documents · {docs.length}</div>
                   <h3 className="display" style={{ fontSize: 22, marginTop: 2 }}>On <em>file</em></h3>
                 </div>
-                <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload")}>New</GradientButton>
+                <GradientButton size="sm" variant="ghost" icon="upload" onClick={() => goto("upload", { patientId: patient.id, patientName: patient.name })}>New</GradientButton>
               </div>
               <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 {docs.map(d => (
-                  <div key={d.id} onClick={() => !patientReadOnly && goto("review", { docId: d.id })} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "var(--glass-inner)", border: "1px solid var(--glass-border-soft)", borderRadius: 10, cursor: patientReadOnly ? "default" : "pointer" }}>
+                  <div key={d.id} onClick={() => !patientReadOnly && goto("review", { docId: d.id, patientId: patient.id, patientName: patient.name })} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "var(--glass-inner)", border: "1px solid var(--glass-border-soft)", borderRadius: 10, cursor: patientReadOnly ? "default" : "pointer" }}>
                     <Icon name="doc" size={16} style={{ color: "var(--accent)" }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500 }} className="clamp-1">{d.filename}</div>
@@ -267,20 +310,12 @@ const PatientScreen = ({ goto, params, role, user }) => {
                 <span className={`pill pill--${patient.riskClass === "high" ? "danger" : patient.riskClass === "medium" ? "warn" : patient.riskClass === "not scored" ? "neutral" : "ok"}`} style={{ height: 24 }}>{(patient.riskClass || 'low').toUpperCase()}</span>
               </div>
               <Sparkline data={[(patient.risk||0) - 0.18, (patient.risk||0) - 0.12, (patient.risk||0) - 0.14, (patient.risk||0) - 0.08, (patient.risk||0) - 0.04, patient.risk||0]} w={300} h={56} stroke={patient.riskClass === "high" ? "var(--danger)" : "var(--accent)"} />
-              <button className="btn btn--block btn--sm btn--ghost" style={{ marginTop: 12 }} onClick={() => goto("risk")}>View risk breakdown <Icon name="arrow-r" size={11} /></button>
+              <button className="btn btn--block btn--sm btn--ghost" style={{ marginTop: 12 }} onClick={() => goto("risk", docs[0]?.id ? { docId: docs[0].id, patientId: patient.id, patientName: patient.name } : { patientId: patient.id, patientName: patient.name })}>View risk breakdown <Icon name="arrow-r" size={11} /></button>
             </GlassCard>
             <GlassCard strong style={{ padding: 22 }}>
               <div className="eyebrow">Care team</div>
               <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                {(patientReadOnly
-                  ? (patient.careTeam?.length ? patient.careTeam : [{ name: "Care team", role: "Assigned by your clinic", primary: true }])
-                  : [
-                    { name: "Dr. J. Patel", role: "Lead clinician", primary: true },
-                    { name: "Dr. K. Adler", role: "Reviewer" },
-                    { name: "RN M. Solomon", role: "Field nurse" },
-                    { name: "PT R. Owens", role: "Physical therapy" },
-                  ]
-                ).map(t => (
+                {(patient.careTeam?.length ? patient.careTeam : [{ name: "Care team", role: "Assigned by your clinic", primary: true }]).map(t => (
                   <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Avatar name={t.name} size={28} />
                     <div style={{ flex: 1 }}>
@@ -315,8 +350,8 @@ const PatientScreen = ({ goto, params, role, user }) => {
         </GlassCard>
       )}
 
-      {tab === "poc" && <PocScreen goto={goto} params={patientReadOnly ? { role } : { docId: patient.id, role }} addToast={() => {}} />}
-      {tab === "risk" && <RiskScreen goto={goto} params={patientReadOnly ? { role } : { docId: patient.id, role }} addToast={() => {}} />}
+      {tab === "poc" && <PocScreen goto={goto} params={patientReadOnly ? { role } : { patientId: patient.id, patientName: patient.name, role }} addToast={() => {}} />}
+      {tab === "risk" && <RiskScreen goto={goto} params={patientReadOnly ? { role } : { docId: docs[0]?.id, patientId: patient.id, patientName: patient.name, role }} addToast={() => {}} />}
 
       {tab === "audit" && (
         <GlassCard strong style={{ padding: 22 }}>

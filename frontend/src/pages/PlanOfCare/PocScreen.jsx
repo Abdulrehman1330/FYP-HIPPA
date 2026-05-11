@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { GlassCard, GradientButton, Icon } from '../../components/ui';
-import { pocService } from '../../services';
+import { adminService, patientService, pocService } from '../../services';
+import api from '../../services/api';
+
+const GENERATABLE_STATUSES = new Set(['APPROVED', 'POC_GENERATED', 'RISK_SCORED']);
 
 function normalizePocSections(rawSections) {
   if (!rawSections) return [];
@@ -97,8 +100,96 @@ const PocScreen = ({ goto, params, addToast }) => {
   const [docId, setDocId] = useState(params?.docId || null);
   const [pocMeta, setPocMeta] = useState(null);
   const [signingLoading, setSigningLoading] = useState(false);
+  const [patients, setPatients] = useState([]);
+  const [patientLoading, setPatientLoading] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState(params?.patientId || '');
+  const [documents, setDocuments] = useState([]);
+  const [documentLoading, setDocumentLoading] = useState(false);
   const role = params?.role;
+  const selectedPatient = patients.find((patient) => patient.id === selectedPatientId);
+  const routePatientName = params?.patientId === selectedPatientId ? params?.patientName : '';
+  const patientId = selectedPatientId || null;
+  const patientName = selectedPatient?.name || routePatientName || '';
   const patientReadOnly = role === 'PATIENT';
+  const clinicalMode = !patientReadOnly;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPatients = async () => {
+      if (!['ADMIN', 'CLINICIAN', 'DOCTOR'].includes(role)) return;
+      setPatientLoading(true);
+      try {
+        let result;
+        if (role === 'ADMIN') {
+          result = await adminService.listPatients({});
+        } else if (role === 'DOCTOR') {
+          result = (await api.get('/doctor/patients')).data.data;
+        } else {
+          result = (await api.get('/clinician/patients')).data.data;
+        }
+        const list = (result?.patients || []).map(adaptPatientOption);
+        if (!cancelled) setPatients(list);
+      } catch (err) {
+        if (!cancelled) addToast?.({ kind: 'danger', text: err.response?.data?.error || 'Failed to load patients' });
+      } finally {
+        if (!cancelled) setPatientLoading(false);
+      }
+    };
+
+    loadPatients();
+    return () => { cancelled = true; };
+  }, [role]);
+
+  useEffect(() => {
+    setSelectedPatientId(params?.patientId || '');
+  }, [params?.patientId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDocuments = async () => {
+      if (!clinicalMode || !selectedPatientId) {
+        setDocuments([]);
+        return;
+      }
+
+      setDocumentLoading(true);
+      try {
+        const profile = await patientService.getClinicalPatient(selectedPatientId, role);
+        const list = (profile.documents || [])
+          .filter((document) => GENERATABLE_STATUSES.has(document.status))
+          .map(adaptDocumentOption);
+
+        if (cancelled) return;
+        setDocuments(list);
+        if (params?.docId && list.some((document) => document.id === params.docId)) {
+          setDocId(params.docId);
+        } else if (!list.some((document) => document.id === docId)) {
+          setDocId('');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDocuments([]);
+          setDocId('');
+          addToast?.({ kind: 'danger', text: err.response?.data?.error || 'Failed to load patient documents' });
+        }
+      } finally {
+        if (!cancelled) setDocumentLoading(false);
+      }
+    };
+
+    loadDocuments();
+    return () => { cancelled = true; };
+  }, [clinicalMode, selectedPatientId, role, params?.docId]);
+
+  useEffect(() => {
+    setDocId(params?.docId || null);
+    setPocMeta(null);
+    setSections([]);
+    setActiveKey('');
+    setLoading(true);
+  }, [params?.docId, selectedPatientId]);
 
   // Load existing POC from the backend. The sidebar route may not include a documentId,
   // so clinical users fall back to the latest accessible generated POC instead of mock text.
@@ -138,8 +229,16 @@ const PocScreen = ({ goto, params, addToast }) => {
       return () => { cancelled = true; };
     }
 
+    if (!docId && clinicalMode) {
+      setSections([]);
+      setActiveKey('');
+      setPocMeta(null);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
     if (!docId) {
-      pocService.getLatest()
+      pocService.getLatest({ patientId })
         .then(applyPocResult)
         .catch(() => {
           if (!cancelled) {
@@ -164,10 +263,14 @@ const PocScreen = ({ goto, params, addToast }) => {
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [docId, patientReadOnly]);
+  }, [docId, patientId, patientReadOnly, clinicalMode]);
 
   const generatePoc = async () => {
     if (patientReadOnly) return;
+    if (!docId) {
+      addToast({ kind: "danger", text: "Select the source document for this Plan of Care" });
+      return;
+    }
 
     setGenerating(true); setGenStep(0);
     let stepTimer;
@@ -177,9 +280,7 @@ const PocScreen = ({ goto, params, addToast }) => {
         setGenStep(prev => prev < 4 ? prev + 1 : prev);
       }, 2000);
 
-      const result = docId
-        ? await pocService.generate(docId)
-        : await pocService.generateLatest();
+      const result = await pocService.generate(docId);
       clearInterval(stepTimer);
       setGenStep(4);
 
@@ -201,6 +302,22 @@ const PocScreen = ({ goto, params, addToast }) => {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const changePatient = (nextPatientId) => {
+    setSelectedPatientId(nextPatientId);
+    setDocId('');
+    setDocuments([]);
+    setPocMeta(null);
+    setSections([]);
+    setActiveKey('');
+  };
+
+  const changeDocument = (nextDocumentId) => {
+    setDocId(nextDocumentId);
+    setPocMeta(null);
+    setSections([]);
+    setActiveKey('');
   };
 
   const saveSectionEdits = async () => {
@@ -251,12 +368,14 @@ const PocScreen = ({ goto, params, addToast }) => {
           <p>
             {patientReadOnly
               ? "Your latest care plan, prepared from approved clinical documentation. Contact your care team before making medical decisions."
-              : "Generated from approved OASIS fields. Review each section, edit anything that needs clinical judgment, then sign to finalize."}
+              : patientName
+                ? `Generated from approved OASIS fields for ${patientName}. Review each section, edit anything that needs clinical judgment, then sign to finalize.`
+                : "Generated from approved OASIS fields. Review each section, edit anything that needs clinical judgment, then sign to finalize."}
           </p>
         </div>
         {!patientReadOnly && (
           <div className="actions">
-            <GradientButton size="sm" variant="ghost" icon="sparkle" onClick={generatePoc} disabled={generating}>
+            <GradientButton size="sm" variant="ghost" icon="sparkle" onClick={generatePoc} disabled={generating || !docId}>
               {sections.length > 0 ? "Regenerate all" : "Generate POC"}
             </GradientButton>
             {sections.length > 0 && (
@@ -267,6 +386,54 @@ const PocScreen = ({ goto, params, addToast }) => {
           </div>
         )}
       </div>
+
+      {clinicalMode && (
+        <GlassCard strong style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1fr) minmax(220px, 1fr) 1.2fr", gap: 14, alignItems: "center" }}>
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Patient context</div>
+              <select
+                className="input"
+                value={selectedPatientId}
+                onChange={(e) => changePatient(e.target.value)}
+                disabled={patientLoading || generating}
+              >
+                <option value="">{patientLoading ? "Loading patients..." : "Select patient for POC generation"}</option>
+                {patients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>{patient.name} · {patient.mrn}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Source document</div>
+              <select
+                className="input"
+                value={docId || ''}
+                onChange={(e) => changeDocument(e.target.value)}
+                disabled={!selectedPatientId || documentLoading || generating}
+              >
+                <option value="">
+                  {!selectedPatientId
+                    ? "Select patient first"
+                    : documentLoading
+                      ? "Loading documents..."
+                      : documents.length === 0
+                        ? "No approved documents for this patient"
+                        : "Select approved document"}
+                </option>
+                {documents.map((document) => (
+                  <option key={document.id} value={document.id}>
+                    {document.filename} · {document.status} · {document.uploadedAt}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              The Plan of Care is generated from the selected source document only. If a patient has multiple approved documents, choose exactly which OASIS/POC document should drive the draft.
+            </div>
+          </div>
+        </GlassCard>
+      )}
 
       {pocMeta && (
         <GlassCard strong style={{ padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 16 }}>
@@ -287,8 +454,14 @@ const PocScreen = ({ goto, params, addToast }) => {
         <GlassCard strong style={{ padding: 40, textAlign: "center" }}>
           <Icon name="poc" size={32} style={{ color: "var(--ink-3)", marginBottom: 12 }} />
           <div className="display" style={{ fontSize: 24 }}>No plan of care <em>yet</em></div>
-          <p className="muted" style={{ fontSize: 13, marginTop: 6, marginBottom: 18 }}>Approve a document first, then generate the plan of care from extracted fields.</p>
-          {!patientReadOnly && <GradientButton variant="primary" icon="sparkle" onClick={generatePoc}>Generate POC</GradientButton>}
+          <p className="muted" style={{ fontSize: 13, marginTop: 6, marginBottom: 18 }}>
+            {!patientReadOnly && !patientId
+              ? "Select a patient first, then choose the approved source document for the care plan."
+              : !patientReadOnly && !docId
+                ? "Select the approved document that should be used to generate this Plan of Care."
+                : "Approve a document first, then generate the plan of care from extracted fields."}
+          </p>
+          {!patientReadOnly && <GradientButton variant="primary" icon="sparkle" onClick={generatePoc} disabled={!docId}>Generate POC</GradientButton>}
         </GlassCard>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 14 }}>
@@ -381,3 +554,25 @@ const PocScreen = ({ goto, params, addToast }) => {
 };
 
 export default PocScreen;
+
+function adaptPatientOption(patient) {
+  return {
+    id: patient.id,
+    mrn: patient.mrn || '—',
+    name: patient.user
+      ? `${patient.user.firstName || ''} ${patient.user.lastName || ''}`.trim() || patient.user.email
+      : 'Unnamed patient',
+  };
+}
+
+function adaptDocumentOption(document) {
+  const uploaded = document.uploadedAt ? new Date(document.uploadedAt) : null;
+  return {
+    id: document.id,
+    filename: document.filename || 'Clinical document',
+    status: document.status || 'UNKNOWN',
+    uploadedAt: uploaded && !Number.isNaN(uploaded.getTime())
+      ? uploaded.toLocaleDateString()
+      : 'no date',
+  };
+}

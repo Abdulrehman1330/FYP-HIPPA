@@ -14,6 +14,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 ## Backend And Database
 
 - The production backend is Node/Express/Prisma under `backend/src`, not the older FastAPI scaffold under `backend/api`.
+- Before opening backend files by guessed name, confirm with `rg --files`; document routes are in `backend/src/routes/documents.routes.js`, and `assertCaseload` lives in `backend/src/middleware/auth.middleware.js`.
 - Prisma Docker builds must copy `prisma/` before `npm ci` because `postinstall` runs `prisma generate`.
 - Run `prisma migrate deploy` before starting the production backend against a fresh database.
 - Production public registration should stay disabled; create the owner with `npm run seed:owner` from `OWNER_*` secrets and force password change on first login.
@@ -29,6 +30,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 ## Environment Lessons
 
 - On this Windows workspace, prefer PowerShell-native commands and `rg`; avoid Bash heredocs.
+- Clinical screens should not fall back to bundled demo patients when backend data is empty or unreachable; show empty/error states so fake patient names such as Alexander never mask routing bugs.
 - When printing GitHub Actions logs locally on Windows, set `PYTHONIOENCODING=utf-8` or encode output safely because CI logs can contain Unicode symbols from tools like Prisma.
 - For SSH commands that contain SQL, `count(*)`, or nested quotes, pipe a here-string into `ssh ... 'bash -s'` instead of putting the whole remote command inside one PowerShell string.
 - For nested remote scripts through PowerShell SSH, prefer `scp` of a temporary script into `/tmp` and run it with `docker compose exec -T ... < script`; nested heredoc markers can leak into Node stdin.

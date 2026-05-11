@@ -11,14 +11,18 @@ const clinicalReadGuard = [authMiddleware, requireRole("CLINICIAN", "ADMIN", "DO
 
 router.post("/poc/generate-latest", ...writeGuard, async (req, res, next) => {
   try {
-    const result = await pocService.generateLatestPoc(req.user);
+    const patientId = req.body?.patientId || req.query?.patientId || null;
+    if (patientId) await assertCaseload(req, { patientId });
+    const result = await pocService.generateLatestPoc(req.user, { patientId });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
 router.get("/poc/latest", ...clinicalReadGuard, async (req, res, next) => {
   try {
-    const poc = await pocService.getLatestAccessiblePoc(req.user);
+    const patientId = req.query?.patientId || null;
+    if (patientId) await assertCaseload(req, { patientId });
+    const poc = await pocService.getLatestAccessiblePoc(req.user, { patientId });
     res.json({ success: true, data: poc });
   } catch (err) { next(err); }
 });

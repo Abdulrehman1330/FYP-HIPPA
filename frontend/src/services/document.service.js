@@ -1,9 +1,10 @@
 import api from './api';
 
 const documentService = {
-  async upload(file) {
+  async upload(file, { patientId } = {}) {
     const form = new FormData();
     form.append('file', file);
+    if (patientId) form.append('patientId', patientId);
     const { data } = await api.post('/documents/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,

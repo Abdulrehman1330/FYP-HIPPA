@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { GlassCard, GradientButton, Icon, Avatar, StatusPill, ConfidenceBadge, SlideOver } from '../../components/ui';
-import { DOCS as MOCK_DOCS, PATIENTS as MOCK_PATIENTS, fieldsFor, AUDIT_TRAIL } from '../../data';
+import { fieldsFor, AUDIT_TRAIL } from '../../data';
 import { reviewService } from '../../services';
 import DocPreview from './DocPreview';
 import FieldRow from './FieldRow';
@@ -34,16 +34,15 @@ const ReviewScreen = ({ goto, params, addToast }) => {
           setQueue(list);
           setSelectedId(params?.docId || list[0].documentId || list[0].id);
         } else {
-          // Fallback to mock data
-          setQueue(MOCK_DOCS);
-          setSelectedId(params?.docId || MOCK_DOCS[0].id);
-          setFields(fieldsFor());
+          setQueue([]);
+          setSelectedId(null);
+          setFields([]);
         }
       })
       .catch(() => {
-        setQueue(MOCK_DOCS);
-        setSelectedId(params?.docId || MOCK_DOCS[0].id);
-        setFields(fieldsFor());
+        setQueue([]);
+        setSelectedId(null);
+        setFields([]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -76,12 +75,12 @@ const ReviewScreen = ({ goto, params, addToast }) => {
             errors: field.validation?.errors || [],
           })));
         } else {
-          setFields(fieldsFor());
+          setFields([]);
         }
         setReviewHistory(result.reviewHistory || AUDIT_TRAIL);
       })
       .catch(() => {
-        setFields(fieldsFor());
+        setFields([]);
         setReviewHistory(AUDIT_TRAIL);
       });
   }, [selectedId]);
@@ -89,7 +88,22 @@ const ReviewScreen = ({ goto, params, addToast }) => {
   // Build display-ready doc object
   const getSelectedDoc = () => {
     const qItem = queue.find(d => (d.documentId || d.id) === selectedId);
-    if (!qItem) return MOCK_DOCS[0];
+    if (!qItem) {
+      return {
+        id: selectedId || '—',
+        filename: 'Select a document',
+        pages: 1,
+        status: 'UPLOADED',
+        uploadedBy: '—',
+        uploadedAt: new Date().toISOString(),
+        confAvg: 0,
+        warnings: 0,
+        errors: 0,
+        claimedBy: null,
+        patientId: null,
+        patientName: null,
+      };
+    }
     // If it has mock shape, return directly
     if (qItem.filename && qItem.confAvg !== undefined) return qItem;
     // Backend shape
@@ -104,7 +118,8 @@ const ReviewScreen = ({ goto, params, addToast }) => {
       warnings: fields.filter(f => f.warn).length,
       errors: qItem.errorCount || 0,
       claimedBy: qItem.claimedBy || null,
-      patientName: fields.find(f => f.key === 'patient_name')?.value || null,
+      patientId: qItem.patientId || reviewDetail?.document?.patientId || params?.patientId || null,
+      patientName: qItem.patientName || reviewDetail?.document?.patientName || params?.patientName || null,
     };
   };
 
@@ -115,23 +130,20 @@ const ReviewScreen = ({ goto, params, addToast }) => {
 
   const updateField = (key, value) => setFields(prev => prev.map(x => x.key === key ? { ...x, value, confidence: 0.99, edited: true } : x));
 
-  const claim = async () => {
-    if (selectedId?.startsWith('DOC-')) return;
-    setActionLoading(true);
-    try {
-      await reviewService.claim(selectedId);
-      addToast({ kind: "ok", text: "Document claimed for review" });
-    } catch (err) {
-      addToast({ kind: "danger", text: err.response?.data?.error || "Could not claim" });
-    }
-    setActionLoading(false);
-  };
-
   const approve = async () => {
+    if (!selectedId) {
+      addToast({ kind: "danger", text: "Select a document before approving" });
+      return;
+    }
     setActionLoading(true);
+    const nextPocParams = {
+      docId: selectedDoc.id,
+      patientId: selectedDoc.patientId || params?.patientId,
+      patientName: selectedDoc.patientName || params?.patientName,
+    };
     if (selectedId?.startsWith('DOC-')) {
       addToast({ kind: "ok", text: `${selectedDoc.id} approved · POC generation queued` });
-      setTimeout(() => goto("poc", { docId: selectedDoc.id }), 600);
+      setTimeout(() => goto("poc", nextPocParams), 600);
       return;
     }
     try {
@@ -145,7 +157,7 @@ const ReviewScreen = ({ goto, params, addToast }) => {
         await reviewService.approve(selectedId, comment);
       }
       addToast({ kind: "ok", text: "Document approved · POC generation queued" });
-      setTimeout(() => goto("poc", { docId: selectedId }), 600);
+      setTimeout(() => goto("poc", nextPocParams), 600);
     } catch (err) {
       const msg = err.response?.data?.error || "Approval failed — check field validation";
       addToast({ kind: "danger", text: msg });
@@ -154,6 +166,10 @@ const ReviewScreen = ({ goto, params, addToast }) => {
   };
 
   const reject = async () => {
+    if (!selectedId) {
+      addToast({ kind: "danger", text: "Select a document before rejecting" });
+      return;
+    }
     setActionLoading(true);
     if (selectedId?.startsWith('DOC-')) {
       addToast({ kind: "danger", text: `${selectedDoc.id} rejected — uploader notified` });
@@ -187,8 +203,8 @@ const ReviewScreen = ({ goto, params, addToast }) => {
         </div>
         <div className="actions">
           <GradientButton size="sm" variant="ghost" icon="audit" onClick={() => setAuditOpen(true)}>Audit history</GradientButton>
-          <GradientButton size="sm" variant="ghost" icon="x" onClick={reject} disabled={actionLoading}>Reject</GradientButton>
-          <GradientButton size="sm" variant="primary" icon="check" onClick={approve} disabled={actionLoading}>
+          <GradientButton size="sm" variant="ghost" icon="x" onClick={reject} disabled={actionLoading || !selectedId}>Reject</GradientButton>
+          <GradientButton size="sm" variant="primary" icon="check" onClick={approve} disabled={actionLoading || !selectedId}>
             {actionLoading ? "Processing..." : "Approve & generate POC"}
           </GradientButton>
         </div>
@@ -211,10 +227,15 @@ const ReviewScreen = ({ goto, params, addToast }) => {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
+            {filteredDocs.length === 0 && (
+              <div className="muted" style={{ padding: 18, fontSize: 12.5 }}>
+                No clinical documents are waiting for review.
+              </div>
+            )}
             {filteredDocs.map(d => {
               const dId = d.documentId || d.id;
               const isSel = dId === selectedId;
-              const pName = d.patientName || MOCK_PATIENTS.find(x => x.id === d.patientId)?.name || 'Unknown';
+              const pName = d.patientName || 'Unassigned patient';
               const avgConf = d.confAvg ?? null;
               return (
                 <button key={dId} onClick={() => setSelectedId(dId)} style={{

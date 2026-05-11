@@ -87,6 +87,13 @@ async function getReviewQueue() {
     orderBy: [{ status: "asc" }, { uploadedAt: "desc" }],
     include: {
       user: { select: { firstName: true, lastName: true } },
+      patient: {
+        select: {
+          id: true,
+          mrn: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      },
       reviewClaimedBy: { select: { id: true, firstName: true, lastName: true } },
       extractedFields: true,
     },
@@ -101,6 +108,11 @@ async function getReviewQueue() {
       filename: doc.filename,
       fileType: doc.fileType,
       status: doc.status,
+      patientId: doc.patientId,
+      patientName: doc.patient?.user
+        ? `${doc.patient.user.firstName || ""} ${doc.patient.user.lastName || ""}`.trim()
+        : null,
+      patientMrn: doc.patient?.mrn || null,
       uploadedBy: `${doc.user.firstName} ${doc.user.lastName}`,
       uploadedAt: doc.uploadedAt,
       claimedBy: doc.reviewClaimedBy
@@ -130,6 +142,13 @@ async function getReviewDetail(documentId) {
         },
       },
       reviewClaimedBy: { select: { id: true, firstName: true, lastName: true } },
+      patient: {
+        select: {
+          id: true,
+          mrn: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      },
     },
   });
   if (!doc) throw new AppError("Document not found", 404);
@@ -160,6 +179,11 @@ async function getReviewDetail(documentId) {
       filename: doc.filename,
       fileType: doc.fileType,
       status: doc.status,
+      patientId: doc.patientId,
+      patientName: doc.patient?.user
+        ? `${doc.patient.user.firstName || ""} ${doc.patient.user.lastName || ""}`.trim()
+        : null,
+      patientMrn: doc.patient?.mrn || null,
       uploadedAt: doc.uploadedAt,
       claimedBy: doc.reviewClaimedBy,
       claimedAt: doc.reviewClaimedAt,
