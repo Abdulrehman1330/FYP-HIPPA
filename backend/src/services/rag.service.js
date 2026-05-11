@@ -23,6 +23,27 @@ function tokenize(text) {
     ?.filter((token) => token.length > 1 && !STOPWORDS.has(token)) || [];
 }
 
+function expandedQueryTokens(question) {
+  const normalized = String(question || "").toLowerCase();
+  const tokens = new Set(tokenize(question));
+
+  const add = (...terms) => terms.forEach((term) => tokens.add(term));
+
+  if (/\b(care plan|plan|today|task|tasks|goal|goals)\b/i.test(normalized)) {
+    add("diagnosis", "mobility", "fall", "safety", "medication", "goal", "intervention", "follow", "summary");
+  }
+
+  if (/\b(risk|score|hospital|readmission|worse)\b/i.test(normalized)) {
+    add("risk", "fall", "mobility", "diagnosis", "medication", "hospitalization");
+  }
+
+  if (/\b(ask|missing|question|care team|doctor|clinician)\b/i.test(normalized)) {
+    add("diagnosis", "mobility", "fall", "safety", "medication", "goal", "intervention");
+  }
+
+  return tokens;
+}
+
 function hasUnsafePatientIntent(question) {
   return UNSAFE_PATIENT_PATTERNS.some((pattern) => pattern.test(question));
 }
@@ -118,14 +139,16 @@ async function loadApprovedPatientEvidence(patientId) {
 }
 
 function retrieveEvidence(question, evidence, limit = 4) {
-  const queryTokens = new Set(tokenize(question));
+  const originalTokens = new Set(tokenize(question));
+  const queryTokens = expandedQueryTokens(question);
   if (queryTokens.size === 0) return [];
 
   return evidence
     .map((item) => {
-      const tokens = tokenize(`${item.section} ${item.text}`);
+      const tokens = tokenize(`${item.section} ${item.metadata?.title || ""} ${item.sourceType || ""} ${item.text}`);
       const overlap = tokens.filter((token) => queryTokens.has(token)).length;
-      const score = overlap / Math.max(queryTokens.size, 1);
+      const denominator = Math.max(Math.min(originalTokens.size || queryTokens.size, 5), 1);
+      const score = Math.min(overlap / denominator, 1);
       return { ...item, score };
     })
     .filter((item) => item.score > 0)

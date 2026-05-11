@@ -785,8 +785,16 @@ body > .atmosphere { opacity: 0.25; }
     padding: 8px 12px;
     gap: 8px;
   }
-  .topbar .search { display: none; }
-  .topbar > div:nth-of-type(1) { display: none; } /* hide role pill on phone */
+  .topbar .search {
+    display: flex;
+    min-width: 0;
+    max-width: none;
+    padding: 0 10px;
+  }
+  .topbar .search input { min-width: 0; }
+  .topbar .search kbd,
+  .topbar .role-pill,
+  .topbar .user-menu-copy { display: none !important; }
 
   /* Sidebar becomes bottom tab bar */
   .nav {

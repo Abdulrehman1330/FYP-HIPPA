@@ -22,6 +22,7 @@ env/
 
 # Logs
 *.log
+*.err
 
 # OS and editor
 .DS_Store
@@ -31,7 +32,9 @@ Thumbs.db
 
 # Local generated artifacts
 TEAM_DETAILED_STEPS_print.html
+tools/
 
 # Data outputs
 data/processed/*
 !data/processed/.gitkeep
+backend/storage/

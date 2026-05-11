@@ -9,6 +9,11 @@ const Dashboard = ({ user, role, goto }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (role === "PATIENT") {
+      setLoading(false);
+      return;
+    }
+
     documentService.list(1, 5)
       .then((result) => {
         const list = result.documents || result.data || result;
@@ -20,7 +25,7 @@ const Dashboard = ({ user, role, goto }) => {
       })
       .catch(() => setDocs(MOCK_DOCS.slice(0, 5)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [role]);
 
   if (role === "PATIENT") return <PatientDashboard user={user} goto={goto} />;
 

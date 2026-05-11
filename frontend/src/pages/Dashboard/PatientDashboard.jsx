@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GlassCard, GradientButton, Icon, Avatar } from '../../components/ui';
-import { PATIENTS, POC_SECTIONS } from '../../data';
-import { ragService } from '../../services';
+import { patientService, ragService } from '../../services';
 
 const SAFE_PATIENT_QUESTIONS = [
   "What does my care plan say for today?",
@@ -23,7 +22,7 @@ function readableSnippet(snippet = "") {
     .trim();
 }
 
-function buildDemoPatientAnswer(question, patient) {
+function buildDemoPatientAnswer(question, patientName) {
   const normalized = question.toLowerCase();
   const unsafe = /(start|stop|change|increase|decrease|skip|double).*(med|medicine|medication|dose|insulin)/i.test(question);
 
@@ -38,21 +37,13 @@ function buildDemoPatientAnswer(question, patient) {
     };
   }
 
-  const planSections = POC_SECTIONS.slice(0, 3);
-  const citations = planSections.map((section, index) => ({
-    sourceId: `DEMO-POC-${section.key}`,
-    section: section.title,
-    snippet: section.body,
-    score: Number((0.84 - index * 0.08).toFixed(2)),
-  }));
-
   if (normalized.includes("risk")) {
     return {
       refused: false,
       confidence: "medium",
-      answer: `Your risk score is shown from reviewed care-plan information for ${patient.name}. It is meant to help your care team monitor you, not to diagnose you or replace clinical advice.`,
-      citations,
-      source: "demo fallback",
+      answer: `Your risk score is shown from reviewed care-plan information for ${patientName}. It is meant to help your care team monitor you, not to diagnose you or replace clinical advice.`,
+      citations: [],
+      source: "offline fallback",
     };
   }
 
@@ -60,31 +51,58 @@ function buildDemoPatientAnswer(question, patient) {
     refused: false,
     confidence: "medium",
     answer: `Simple answer:\nYour approved care-plan information highlights your goals, interventions, and safety instructions.\n\nWhat this means:\n- Follow the plan your care team approved.\n- Use the summary for understanding only.\n- Contact your care team for clinical decisions.`,
-    citations,
-    source: "demo fallback",
+    citations: [],
+    source: "offline fallback",
   };
 }
 
 const PatientDashboard = ({ user, goto }) => {
-  const me = PATIENTS.find(p => p.id === user.patientId) || PATIENTS[0];
+  const [profile, setProfile] = useState(null);
+  const [risk, setRisk] = useState(null);
   const [chatQuestion, setChatQuestion] = useState(SAFE_PATIENT_QUESTIONS[0]);
   const [chatAnswer, setChatAnswer] = useState(null);
   const [chatLoading, setChatLoading] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([patientService.getMyProfile(), patientService.getMyRisk()])
+      .then(([profileResult, riskResult]) => {
+        if (cancelled) return;
+        if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
+        if (riskResult.status === 'fulfilled') setRisk(riskResult.value);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const patientName = profile?.user
+    ? `${profile.user.firstName || ''} ${profile.user.lastName || ''}`.trim()
+    : user.name;
+  const riskScore = risk?.riskScore ?? risk?.risk_score ?? null;
+  const riskClass = risk?.riskClass || risk?.risk_class || 'not scored';
+
   const myTasks = [
-    { t: "Take Lisinopril 10 mg",   time: "8:00 AM",  done: true,  kind: "med" },
-    { t: "Log blood pressure",      time: "9:00 AM",  done: true,  kind: "task" },
-    { t: "PT visit · R. Owens",     time: "11:00 AM", done: false, kind: "visit" },
-    { t: "Walk 100 ft (2x)",        time: "2:00 PM",  done: false, kind: "task" },
-    { t: "Take Atorvastatin 20 mg", time: "9:00 PM",  done: false, kind: "med" },
+    { t: "Review today's care plan", time: "8:00 AM", done: true, kind: "task" },
+    { t: "Log requested vital signs", time: "9:00 AM", done: true, kind: "task" },
+    { t: "Check upcoming care-team visit", time: "11:00 AM", done: false, kind: "visit" },
+    { t: "Complete approved mobility activity", time: "2:00 PM", done: false, kind: "task" },
+    { t: "Follow medication schedule as prescribed", time: "9:00 PM", done: false, kind: "med" },
   ];
 
   const myKpis = [
     { label: "Plan progress", value: "Day 4",  sub: "of 60",     tone: "ok" },
     { label: "Today's tasks", value: "2 of 5", sub: "completed", tone: "neutral" },
-    { label: "Risk score",    value: me.risk || 32, sub: "moderate", tone: (me.risk || 32) >= 60 ? "danger" : (me.risk || 32) >= 40 ? "warn" : "ok" },
+    {
+      label: "Risk score",
+      value: riskScore === null ? "—" : riskScore.toFixed(2),
+      sub: riskClass,
+      tone: riskClass === "high" ? "danger" : riskClass === "medium" ? "warn" : riskScore === null ? "neutral" : "ok",
+    },
     { label: "Next visit",    value: "Tue",    sub: "Dr. J. Patel", tone: "neutral" },
   ];
+  const careTeam = [
+    profile?.primaryDoctor && { name: `${profile.primaryDoctor.firstName || ''} ${profile.primaryDoctor.lastName || ''}`.trim(), role: "Primary doctor", primary: true },
+    profile?.primaryClinician && { name: `${profile.primaryClinician.firstName || ''} ${profile.primaryClinician.lastName || ''}`.trim(), role: "Primary clinician" },
+  ].filter(Boolean);
 
   const askPatientAssistant = async (question = chatQuestion) => {
     const trimmedQuestion = question.trim();
@@ -106,7 +124,7 @@ const PatientDashboard = ({ user, goto }) => {
       const result = await ragService.askPatient(trimmedQuestion);
       setChatAnswer({ ...result, source: "backend RAG" });
     } catch {
-      setChatAnswer(buildDemoPatientAnswer(trimmedQuestion, me));
+      setChatAnswer(buildDemoPatientAnswer(trimmedQuestion, patientName));
     } finally {
       setChatLoading(false);
     }
@@ -122,7 +140,7 @@ const PatientDashboard = ({ user, goto }) => {
         </div>
         <div className="actions">
           <GradientButton icon="poc" size="sm" variant="ghost" onClick={() => goto("poc")}>My care plan</GradientButton>
-          <GradientButton icon="user" variant="primary" size="sm" onClick={() => goto("patient", { id: user.patientId })}>My record</GradientButton>
+          <GradientButton icon="user" variant="primary" size="sm" onClick={() => goto("patient")}>My record</GradientButton>
         </div>
       </div>
 
@@ -251,11 +269,7 @@ const PatientDashboard = ({ user, goto }) => {
           <GlassCard strong style={{ padding: 18 }}>
             <div className="eyebrow">Your care team</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-              {[
-                { name: "Dr. J. Patel", role: "Lead doctor", primary: true },
-                { name: "Dr. K. Adler", role: "Reviewer" },
-                { name: "RN M. Solomon", role: "Field nurse" },
-              ].map((m, i) => (
+              {(careTeam.length > 0 ? careTeam : [{ name: "Care team", role: "Assigned by your clinic", primary: true }]).map((m, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 8, background: m.primary ? "var(--accent-soft)" : "var(--glass-inner)", border: "1px solid var(--glass-border-soft)" }}>
                   <Avatar name={m.name} size={28} />
                   <div style={{ flex: 1 }}>
@@ -272,7 +286,7 @@ const PatientDashboard = ({ user, goto }) => {
             <div className="eyebrow">Privacy</div>
             <h3 className="display" style={{ fontSize: 22, marginTop: 4 }}>You see <em>only your record</em>.</h3>
             <p className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.5 }}>
-              Patient access is scoped to <span className="mono">{user.patientId}</span>. Other patients, the upload pipeline, review queue and audit logs are restricted to clinical and admin roles.
+              Patient access is scoped to your authenticated patient profile. Other patients, the upload pipeline, review queue and audit logs are restricted to clinical and admin roles.
             </p>
             <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
               <span className="pill pill--ok"><Icon name="shield" size={10} /> HIPAA scope</span>

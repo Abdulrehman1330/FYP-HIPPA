@@ -17,7 +17,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py field_extractor.py preprocessor.py ./
+COPY app.py config.py field_extractor.py ocr_engine.py pdf_processor.py preprocessor.py schemas.py ./
 
 EXPOSE 5000
 

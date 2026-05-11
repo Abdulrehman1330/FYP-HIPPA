@@ -1012,3 +1012,66 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Validation: Backend syntax checks passed. Frontend production build passed. Backend restarted successfully and health check is healthy. Authenticated clinician tests confirmed `GET /poc/latest` and `POST /poc/generate-latest` use document `d2b72703-fe13-4a6d-b424-cd0976285da2` and create new POC versions.
 - Work left: Re-test after Gemini free-tier quota resets or use a fresh/funded provider key so generated fields show LLM prose instead of deterministic fallback text.
 - Blockers or risks: Gemini currently returns HTTP `429` free-tier quota exceeded, so the backend falls back safely and the text may still look unchanged until quota/key availability is fixed. The required global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` could not be updated because the `D:` drive is not available in this environment.
+
+### 2026-05-11 - Patient Portal Record Isolation Fix
+
+- Changed: Added patient-only `GET /api/v1/me/risk` and updated patient frontend screens to use `/me/profile`, `/me/documents`, `/me/risk`, and `/me/poc` instead of mock patient/caseload data. Patient risk view now hides the all-patients risk table, cohort comparison, run-prediction action, and share-with-team action. Patient record view now ignores route patient IDs and always loads the authenticated patient's own profile.
+- Why: Patient users could see mock records and a mock risk list for other patients because the frontend fell back to shared demo data and the patient risk page reused the clinician risk screen.
+- Current status: Patient mode is strict read-only and self-scoped. If backend patient data is missing, it shows empty/not-scored states instead of another synthetic patient's clinical data.
+- Validation: Backend syntax checks passed for `caseload.service.js` and `caseload.routes.js`. Frontend production build passed.
+- Work left: Start Docker/PostgreSQL and run live patient login tests for `/me/profile`, `/me/documents`, `/me/risk`, and `/me/poc`.
+- Blockers or risks: Docker Desktop/PostgreSQL was not running, so live backend HTTP verification could not be completed in this session.
+
+### 2026-05-11 - Patient RAG Retrieval Fix
+
+- Changed: Improved `backend/src/services/rag.service.js` retrieval by expanding general patient questions such as "What does my care plan say for today?" into approved evidence concepts like diagnosis, mobility, fall risk, safety, medication, goals, and interventions.
+- Why: The patient had approved evidence, but the RAG retriever refused because general patient wording did not overlap enough with the clinical field names stored in the evidence corpus.
+- Current status: Patient RAG now answers general care-plan questions with cited evidence and still refuses unsafe medication-dose change requests.
+- Validation: Backend syntax check passed. Frontend production build passed. Direct backend and frontend-proxy tests for `POST /api/v1/patient/rag/chat` returned a cited answer with 4 citations. Unsafe insulin-dose question still refused.
+- Work left: Optionally improve wording for specific fall-risk questions so it does not use the generic risk-score explanation when the user means fall risk.
+- Blockers or risks: Current RAG response generation is still deterministic/rule-based, not LLM-based.
+
+### 2026-05-11 - Demo Admin Account Seeding
+
+- Changed: Added `backend/scripts/seed-demo-admins.js` and ran it locally to create/update demo `SUPER_ADMIN` and `ADMIN` users. The script is idempotent and attaches the admin account to `Demo Home Health Clinic`.
+- Why: The local database had clinician, doctor, and patient demo accounts, but no admin or superadmin accounts for testing role-specific frontend pages.
+- Current status: `superadmin.demo@fyp.local` and `admin.demo@fyp.local` now exist locally with active status and `mustChangePassword=false`.
+- Validation: Login was verified successfully for `SUPER_ADMIN`, `ADMIN`, `CLINICIAN`, `DOCTOR`, and `PATIENT` demo accounts.
+- Work left: Commit/push the reusable seed script if the team wants every machine to recreate these accounts consistently.
+- Blockers or risks: The first script version attempted to upsert clinic by name, but `Clinic.name` is not unique in Prisma; it was corrected to `findFirst` by name and update by ID.
+
+### 2026-05-11 - Topbar Search and Notifications
+
+- Changed: Reworked `frontend/src/components/layout/Topbar.jsx` so the search bar is functional and the notification bell opens a role-aware notification dropdown. Passed `allowedNav` and `goto` from `App.jsx` into the topbar, added keyboard search with `Ctrl+K`, enter-to-open first result, quick navigation/action results, sign-out/change-password actions, unread notification state, and a `Mark read` control. Added `*.err` to `.gitignore` so temporary server error logs are not committed.
+- Why: Abdul wanted the topbar notification button and search bar to stop being static UI elements and behave like real application controls.
+- Current status: Search now works as role-aware navigation/action search for the pages each logged-in role is allowed to access. Notifications are functional client-side demo notifications, not yet database-backed notifications.
+- Validation: `npm run build` passed in `frontend`. `git diff --check` passed for the edited frontend files. Frontend and backend were restarted locally; frontend returned `200` on `http://127.0.0.1:5173/` and backend health returned healthy after Docker/PostgreSQL was started.
+- Work left: Add persistent backend notification records if the project needs real audit/event notifications, and add full patient/document text search if the supervisor expects database search rather than navigation/action search.
+- Blockers or risks: Browser automation could open the app but could not type into the login email field because of a local automation limitation with `input type="email"`. The blocked browser session-injection shortcut was not used. The required global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` could not be updated because the `D:` drive is not available.
+
+### 2026-05-11 - OCR Implementation Check
+
+- Changed: Reviewed the OCR microservice and Node extraction route. Fixed `backend/ocr-service/Dockerfile` so the container copies all imported modules, not only `app.py`, `field_extractor.py`, and `preprocessor.py`. Tightened `backend/ocr-service/field_extractor.py` section-boundary handling so list fields such as medications, allergies, goals, and interventions do not swallow later OASIS/POC sections.
+- Why: Abdul asked whether OCR works. The code had a real Docker startup issue and the regex extractor was over-capturing multi-line sections in realistic synthetic text.
+- Current status: The extraction design is valid: Node uploads documents, `POST /documents/:id/extract` calls the Python OCR service at `OCR_SERVICE_URL`, the OCR service uses PDF text-layer extraction first and Tesseract OCR fallback, then saves normalized fields into PostgreSQL. However, full OCR cannot currently run on this machine until the OCR service dependencies and Tesseract are available.
+- Validation: Python compile check passed for `backend/ocr-service`. Node syntax check passed for `backend/src/routes/extraction.routes.js`. Direct field-extractor test found 12/14 synthetic OASIS/POC fields with corrected boundaries. Backend integration test returned the expected `503 UPSTREAM_UNAVAILABLE: OCR service unreachable` when the OCR service was not running.
+- Work left: Install OCR Python dependencies and Tesseract locally, or build/run the OCR Docker container once Docker Hub DNS works. Then run `python test_service.py <sample.pdf>` and a full upload-to-extract API test.
+- Blockers or risks: `tesseract` is not installed/on PATH. Python OCR dependencies are not installed and `pip install -r backend/ocr-service/requirements.txt` failed because package indexes were unreachable. Docker build also failed because Docker could not resolve `registry-1.docker.io`. A temporary upload used for the integration test exposed an existing delete-flow bug: document deletion conflicts with append-only audit-log constraints, so cleanup had to restore the uploaded file instead of deleting the document.
+
+### 2026-05-11 - Backend Install and Run
+
+- Changed: Re-ran backend `npm install`, regenerated Prisma Client, deployed Prisma migrations, and restarted the Node backend.
+- Why: Abdul asked to install and run the backend from the current project state.
+- Current status: Backend is running on port `3000` with process ID `33852`. PostgreSQL Docker container `fyp-postgres-1` is running and connected.
+- Validation: `npm install` completed successfully after stopping the previous backend process. `npm run db:migrate` reported no pending migrations. `node --check src/server.js` and `node --check src/app.js` passed. `GET http://localhost:3000/api/v1/health` returns `{"status":"healthy","database":"connected"}`.
+- Work left: Run `npm audit`/dependency remediation later if needed; install reported two high-severity npm audit findings but did not block startup.
+- Blockers or risks: First `npm install` failed because the running backend locked Prisma's Windows query-engine DLL. Stopping the backend before Prisma generation resolved it. `GLOBAL_MEMORY.md` could not be updated because the configured `D:` drive path is not available on this machine.
+
+### 2026-05-11 - OCR Service Installed and Running
+
+- Changed: Installed OCR Python dependencies into Python 3.11, installed/extracted a local portable Tesseract runtime under `tools/tesseract-ocr`, downloaded `eng.traineddata`, and started the OCR FastAPI service on port `5000`. Updated OCR code to preserve Tesseract line breaks and normalize common OCR confusion where ICD-10 `I50.9` is read as `150.9`. Added `tools/` to `.gitignore` so the local binary runtime is not committed.
+- Why: Abdul asked to install Tesseract and dependencies so OCR works locally instead of returning `OCR service unreachable`.
+- Current status: OCR service is running on port `5000` with process ID `10660`. Backend is running on port `3000`. `POST /api/v1/documents/:id/extract` now reaches the OCR service successfully.
+- Validation: `GET http://localhost:5000/health` returns `{"status":"healthy","service":"ocr"}`. OCR startup confirms `Tesseract ready (version=5.5.0.20241111)`. A synthetic OASIS image test returned 11 extracted fields: patient name, DOB, SOC date, primary diagnosis, ICD-10, functional status, medications, allergies, frequency, goals, and interventions. A full backend upload/extract test saved 11 extracted fields into PostgreSQL for document `d6c75251-1c87-46b1-bb10-ca43c4bfa4ea`.
+- Work left: Use real/synthetic OASIS PDFs and scanned forms to evaluate accuracy beyond the synthetic image. Optionally create a checked-in PowerShell startup script for OCR so the Tesseract environment variables are set automatically.
+- Blockers or risks: The normal Tesseract installer could not run because the installer/UAC flow was cancelled, so a portable extracted runtime is used instead. `pip install` only worked after forcing the official PyPI index. `GLOBAL_MEMORY.md` could not be updated because the configured `D:` drive path is not available.

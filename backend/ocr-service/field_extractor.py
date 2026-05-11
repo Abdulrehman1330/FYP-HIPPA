@@ -33,6 +33,7 @@ OASIS_PATTERNS = {
     "primary_icd10": [
         r"M1021\s*[-:]?\s*Primary\s*Diagnosis[^\n\r]*[\r\n]+\s*([A-Z]\d{2}\.?\d{0,3})",
         r"(?:Primary\s*)?ICD[\-\s]*10\s*(?:Code)?\s*[:\-]\s*([A-Z]\d{2}\.?\d{0,3})",
+        r"\b([I1]\d{2}\.\d{1,3})\b",
         r"\b([A-Z]\d{2}\.\d{1,3})\b",
     ],
     "admission_source": [
@@ -92,6 +93,20 @@ DATE_FORMATS = [
     re.compile(r"^\d{1,2}\.\d{1,2}\.\d{2,4}$"),
 ]
 
+SECTION_BOUNDARY = re.compile(
+    r"\n\s*(?=("
+    r"M\d{4}\b|"
+    r"SECTION\s+[A-Z]\b|"
+    r"Current\s+Medications?\b|Medications?\b|"
+    r"Known\s+Allergies\b|Allerg(?:y|ies)\b|"
+    r"Frequency\b|Visit\s+Frequency\b|"
+    r"Duration\b|Treatment\s+Duration\b|"
+    r"(?:Treatment\s+)?Goals?\b|"
+    r"(?:Planned\s+)?Interventions?\b"
+    r"))",
+    re.IGNORECASE,
+)
+
 
 def _normalize_date(value: str) -> Optional[str]:
     value = value.strip()
@@ -123,6 +138,11 @@ def _find_with_confidence(text: str, patterns: list[str]) -> Optional[tuple[str,
                 confidence = max(0.6, 0.9 - (idx * 0.1))
                 return value, confidence
     return None
+
+
+def _truncate_at_section_boundary(blob: str) -> str:
+    """Keep a captured list field from swallowing the next form section."""
+    return SECTION_BOUNDARY.split(blob, maxsplit=1)[0].strip()
 
 
 def _locate_source_page(value: str, pages_text: list[str]) -> int:
@@ -169,6 +189,11 @@ def extract_fields(full_text: str, pages_text: list[str]) -> list[dict]:
                 confidence *= 0.6
             else:
                 value = normalized
+        elif field_name == "primary_icd10" and value.startswith("1"):
+            # OCR commonly reads ICD-10 chapter "I" as digit "1" (e.g., I50.9).
+            value = f"I{value[1:]}"
+        elif field_name == "primary_diagnosis":
+            value = re.sub(r"\b1(?=\d{2}\.\d)", "I", value, count=1)
 
         results.append(
             {
@@ -196,6 +221,7 @@ def extract_fields(full_text: str, pages_text: list[str]) -> list[dict]:
             continue
 
         blob, confidence = found
+        blob = _truncate_at_section_boundary(blob)
         items = _split_list(blob)
         if not items:
             results.append(
@@ -261,6 +287,7 @@ def extract_fields(full_text: str, pages_text: list[str]) -> list[dict]:
             continue
 
         blob, confidence = found
+        blob = _truncate_at_section_boundary(blob)
         items = _split_list(blob)
         if not items:
             results.append(

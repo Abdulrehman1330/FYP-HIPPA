@@ -134,6 +134,33 @@ async function selfLatestPoc(user) {
   return poc;
 }
 
+async function selfLatestRisk(user) {
+  const p = await prisma.patient.findFirst({ where: { userId: user.id }, select: { id: true } });
+  if (!p) throw new AppError("Patient profile not found", 404);
+
+  const risk = await prisma.riskScore.findFirst({
+    where: {
+      document: {
+        patientId: p.id,
+      },
+    },
+    orderBy: { predictedAt: "desc" },
+    include: {
+      document: {
+        select: {
+          id: true,
+          filename: true,
+          status: true,
+          uploadedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!risk) throw new AppError("No risk score found for this patient", 404);
+  return risk;
+}
+
 module.exports = {
   clinicianPatients,
   clinicianPatientDetail,
@@ -142,4 +169,5 @@ module.exports = {
   selfProfile,
   selfDocuments,
   selfLatestPoc,
+  selfLatestRisk,
 };
