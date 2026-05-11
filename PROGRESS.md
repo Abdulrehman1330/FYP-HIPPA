@@ -698,9 +698,9 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 
 - Changed: Configured GitHub Actions repository secrets for VPS SSH, database, JWT, owner bootstrap, and Caddy email. Updated the deploy workflow to use GitHub's built-in `GITHUB_TOKEN` for GHCR instead of requiring separate GHCR secrets.
 - Why: Abdul wants pushes to `main` to deploy automatically without committing VPS keys or runtime secrets.
-- Current status: Required deployment secrets are present in GitHub. The VPS private key remains local and ignored; it was uploaded only as an encrypted Actions secret. The pushed workflow now provides a non-secret placeholder `DATABASE_URL` for Prisma schema validation.
-- Validation: First pushed workflow triggered but failed before jobs were created because the remote SSH heredoc terminator was not indented as YAML block content. The next run reached backend validation and failed because Prisma requires `DATABASE_URL` while validating the schema; the validation env has now been corrected.
-- Next steps: Push the Prisma validation fix and confirm the next GitHub Actions run completes and redeploys the HIPAA Home containers.
+- Current status: Required deployment secrets are present in GitHub. The VPS private key remains local and ignored; it was uploaded only as an encrypted Actions secret. Pushes to `main` now run the Contabo deploy workflow automatically.
+- Validation: GitHub Actions run `25699122876` completed successfully for commit `31367d8`. Live smoke checks passed: `https://hippa-home-api.duckdns.org/api/v1/health` returned healthy with database connected, and `https://hippa-home.duckdns.org` returned HTTP 200.
+- Next steps: Use the seeded owner account to change the temporary password, then treat future `main` pushes as production deploys.
 - Blockers or risks: GitHub Actions will use the existing edge Caddy route already configured on the VPS. If the VPS is rebuilt from scratch, the edge Caddy route must be restored or the standalone Caddy profile must be used.
 
 ### 2026-04-29 - Documentation Asset Check
