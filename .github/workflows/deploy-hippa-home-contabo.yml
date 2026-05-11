@@ -72,6 +72,8 @@ jobs:
 
       - name: Validate backend
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql://hippa_home_app:placeholder@localhost:5432/hippa_home_prod
         run: |
           set -euo pipefail
           npm ci

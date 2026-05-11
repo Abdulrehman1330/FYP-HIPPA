@@ -27,6 +27,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 ## Environment Lessons
 
 - On this Windows workspace, prefer PowerShell-native commands and `rg`; avoid Bash heredocs.
+- When printing GitHub Actions logs locally on Windows, set `PYTHONIOENCODING=utf-8` or encode output safely because CI logs can contain Unicode symbols from tools like Prisma.
 - For SSH commands that contain SQL, `count(*)`, or nested quotes, pipe a here-string into `ssh ... 'bash -s'` instead of putting the whole remote command inside one PowerShell string.
 - If Prisma install/generate fails on Windows, stop any running backend first because Prisma engine DLLs can be locked by the Node process.
 - Windows OpenSSH ignores private keys with broad ACLs. For local deploy keys, remove inherited/group access and keep read permission only for the current user, Administrators, and SYSTEM.
