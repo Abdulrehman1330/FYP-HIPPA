@@ -703,6 +703,15 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Next steps: Use the seeded owner account to change the temporary password, then treat future `main` pushes as production deploys.
 - Blockers or risks: GitHub Actions will use the existing edge Caddy route already configured on the VPS. If the VPS is rebuilt from scratch, the edge Caddy route must be restored or the standalone Caddy profile must be used.
 
+### 2026-05-12 - Synthetic Demo Data Seeded On VPS
+
+- Changed: Seeded the live Contabo database with one synthetic demo clinic, three synthetic patients, three document records, 15 extracted fields, two generated POCs, one risk score, and demo audit entries.
+- Why: Abdul asked to fill sample data for the deployed university demo without using real PHI.
+- Current status: Demo credentials were generated with strong random temporary passwords and stored only in ignored local access material under `contabo-vps-access/hippa-home-demo-credentials.json`. Public registration remains disabled.
+- Validation: Live API health still returns healthy with database connected. A seeded clinician login succeeds and returns `mustChangePassword=true`, so first use is forced through the password-change flow.
+- Next steps: Use the local ignored credential file for the demo accounts, change each temporary password at first login, and keep all sample records synthetic.
+- Blockers or risks: The GitHub repository is public, so committed content must stay free of PHI and secret values. GitHub Actions secret names are visible to authorized repo users, but values remain encrypted and are not committed.
+
 ### 2026-04-29 - Documentation Asset Check
 
 - Changed: Verified available documentation assets before starting report work.

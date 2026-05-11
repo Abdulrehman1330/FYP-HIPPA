@@ -17,6 +17,8 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 - Prisma Docker builds must copy `prisma/` before `npm ci` because `postinstall` runs `prisma generate`.
 - Run `prisma migrate deploy` before starting the production backend against a fresh database.
 - Production public registration should stay disabled; create the owner with `npm run seed:owner` from `OWNER_*` secrets and force password change on first login.
+- Demo data for the live VPS must be synthetic only. Store any generated demo passwords under ignored `contabo-vps-access/`, never in committed seed files or progress notes.
+- The backend auth middleware file is `backend/src/middleware/auth.middleware.js`, not `auth.js`.
 
 ## ML And OCR
 
@@ -29,6 +31,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 - On this Windows workspace, prefer PowerShell-native commands and `rg`; avoid Bash heredocs.
 - When printing GitHub Actions logs locally on Windows, set `PYTHONIOENCODING=utf-8` or encode output safely because CI logs can contain Unicode symbols from tools like Prisma.
 - For SSH commands that contain SQL, `count(*)`, or nested quotes, pipe a here-string into `ssh ... 'bash -s'` instead of putting the whole remote command inside one PowerShell string.
+- For nested remote scripts through PowerShell SSH, prefer `scp` of a temporary script into `/tmp` and run it with `docker compose exec -T ... < script`; nested heredoc markers can leak into Node stdin.
 - If Prisma install/generate fails on Windows, stop any running backend first because Prisma engine DLLs can be locked by the Node process.
 - Windows OpenSSH ignores private keys with broad ACLs. For local deploy keys, remove inherited/group access and keep read permission only for the current user, Administrators, and SYSTEM.
 - Shared VPS disk can be tight; `docker builder prune -af` is a safe first cleanup step for build cache before heavy ML/OCR image builds because it does not remove running containers or volumes.
