@@ -712,6 +712,15 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Next steps: Use the local ignored credential file for the demo accounts, change each temporary password at first login, and keep all sample records synthetic.
 - Blockers or risks: The GitHub repository is public, so committed content must stay free of PHI and secret values. GitHub Actions secret names are visible to authorized repo users, but values remain encrypted and are not committed.
 
+### 2026-05-12 - ML Model Simplified To Logistic Regression
+
+- Changed: Replaced the ML service's XGBoost/SHAP implementation with a scikit-learn Logistic Regression baseline trained on synthetic readmission data. Removed `xgboost` and `shap` from the ML service requirements and changed explanations to coefficient-based top factors.
+- Why: Abdul asked to keep the ML model simpler for now.
+- Current status: The `/predict` response shape remains compatible with the backend: `risk_score`, `risk_class`, and `explanation.top_factors` are still returned.
+- Validation: Host Anaconda direct training failed because pandas/numpy binaries are mismatched, so validation used the production Docker path. The ML Docker image built successfully, trained the Logistic Regression baseline with AUROC `0.715`, `/health` returned `model_type=logistic_regression`, and `/predict` returned a compatible high-risk response with coefficient-based top factors.
+- Next steps: Push to `main` so GitHub Actions redeploys the simplified model to Contabo.
+- Blockers or risks: This is a synthetic demo baseline, not a clinically validated model.
+
 ### 2026-04-29 - Documentation Asset Check
 
 - Changed: Verified available documentation assets before starting report work.

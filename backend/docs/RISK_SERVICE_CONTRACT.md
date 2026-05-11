@@ -56,10 +56,10 @@ You can ignore unknown features or request schema changes — coordinate with As
   "risk_class": "medium",
   "explanation": {
     "top_factors": [
-      { "feature": "has_chf", "value": 1, "shap": 0.12 },
-      { "feature": "age", "value": 75, "shap": 0.08 }
+      { "feature": "has_chf", "value": 1, "contribution": 0.12, "direction": "increases" },
+      { "feature": "age", "value": 75, "contribution": 0.08, "direction": "increases" }
     ],
-    "model_version": "xgboost-v0.3"
+    "model_version": "logistic-regression-v0.1-synthetic"
   }
 }
 ```
@@ -68,7 +68,7 @@ You can ignore unknown features or request schema changes — coordinate with As
 |---|---|---|
 | `risk_score` | float `[0, 1]` | 30-day readmission probability |
 | `risk_class` | `"low" \| "medium" \| "high"` | Suggested thresholds: ≥0.35 high, ≥0.20 medium |
-| `explanation.top_factors` | array | SHAP-style top contributors (≤ 5) |
+| `explanation.top_factors` | array | Coefficient-based top contributors (≤ 5) |
 | `explanation.model_version` | string | Bumps when you retrain |
 
 ### Errors
@@ -107,8 +107,8 @@ Document status moves `APPROVED` → `RISK_SCORED`.
 
 - **Language**: Python 3.11
 - **Framework**: FastAPI (matches our OCR microservice convention)
-- **Model**: XGBoost or LightGBM
-- **Explainability**: SHAP
+- **Model**: scikit-learn Logistic Regression baseline for now
+- **Explainability**: coefficient contribution ranking
 - **Deployment**: Azure Container Apps or local Docker for development
 
 Minimal skeleton:
@@ -116,8 +116,7 @@ Minimal skeleton:
 ```python
 from fastapi import FastAPI
 from pydantic import BaseModel
-import xgboost as xgb
-import shap
+from sklearn.linear_model import LogisticRegression
 
 app = FastAPI()
 
@@ -133,13 +132,13 @@ def health():
 def predict(req: PredictRequest):
     # 1. Vectorize features in deterministic order
     # 2. model.predict_proba()
-    # 3. shap.TreeExplainer for top_factors
+    # 3. rank coefficient contributions for top_factors
     return {
         "risk_score": float(score),
         "risk_class": "high" if score >= 0.35 else "medium" if score >= 0.20 else "low",
         "explanation": {
             "top_factors": top_factors,
-            "model_version": "xgboost-v0.3"
+            "model_version": "logistic-regression-v0.1-synthetic"
         }
     }
 ```
