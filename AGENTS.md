@@ -110,9 +110,14 @@ The explanation should be concise but complete enough that Abdul can answer supe
 Before starting work:
 
 1. Read `PROGRESS.md`
-2. Confirm the current phase
-3. Pick the next incomplete task
-4. Check dependencies between frontend, backend, cloud, and ML
+2. Read `GLOBAL_MEMORY.md` if it exists
+3. Confirm the current phase
+4. Pick the next incomplete task
+5. Check dependencies between frontend, backend, cloud, and ML
+
+### Project Memory Rule
+
+Use `GLOBAL_MEMORY.md` at the repository root as this project's reusable working memory. Keep it short and specific to the FYP project. Do not store Ash Systems operational details, private VPS credentials, temporary task logs, or secrets in this file.
 
 ### Step 2: Lock Scope and Owner
 

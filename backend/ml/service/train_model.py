@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 import joblib
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 
@@ -56,11 +55,8 @@ def train():
     print(f"AUROC: {roc_auc_score(y_test, y_prob):.3f}")
     print(f"Brier: {brier_score_loss(y_test, y_prob):.3f}")
 
-    calibrated = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
-    calibrated.fit(X_train, y_train)
-
     os.makedirs("model", exist_ok=True)
-    joblib.dump(calibrated, "model/readmission_model.pkl")
+    joblib.dump(model, "model/readmission_model.pkl")
     print("Model saved to model/readmission_model.pkl")
 
 

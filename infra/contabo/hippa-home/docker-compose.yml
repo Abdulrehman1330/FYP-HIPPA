@@ -1,0 +1,126 @@
+name: hippa-home
+
+services:
+  postgres:
+    container_name: hippa-home-postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - hippa_home_pgdata:/var/lib/postgresql/data
+    networks:
+      - hippa_home_private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    container_name: hippa-home-backend
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-1h}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      CORS_ORIGINS: https://hippa-home.duckdns.org
+      PUBLIC_REGISTRATION_ENABLED: ${PUBLIC_REGISTRATION_ENABLED:-false}
+      PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-12}
+      BCRYPT_COST: ${BCRYPT_COST:-12}
+      DOCUMENT_STORAGE_DIR: /app/storage/documents
+      OCR_SERVICE_URL: http://ocr-service:5000
+      ML_SERVICE_URL: http://ml-service:8000
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      OPENAI_API_KEY: ${HIPPA_HOME_OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      GEMINI_API_KEY: ${HIPPA_HOME_GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      ANTHROPIC_API_KEY: ${HIPPA_HOME_ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-20241022}
+      ANTHROPIC_VERSION: ${ANTHROPIC_VERSION:-2023-06-01}
+      OWNER_EMAIL: ${OWNER_EMAIL:?OWNER_EMAIL is required}
+      OWNER_TEMP_PASSWORD: ${OWNER_TEMP_PASSWORD:?OWNER_TEMP_PASSWORD is required}
+      OWNER_FIRST_NAME: ${OWNER_FIRST_NAME:?OWNER_FIRST_NAME is required}
+      OWNER_LAST_NAME: ${OWNER_LAST_NAME:?OWNER_LAST_NAME is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ocr-service:
+        condition: service_started
+      ml-service:
+        condition: service_started
+    volumes:
+      - hippa_home_backend_storage:/app/storage
+      - hippa_home_backend_logs:/app/logs
+    networks:
+      - hippa_home_private
+    expose:
+      - "3000"
+
+  ocr-service:
+    container_name: hippa-home-ocr-service
+    image: ${OCR_IMAGE:?OCR_IMAGE is required}
+    restart: unless-stopped
+    networks:
+      - hippa_home_private
+    expose:
+      - "5000"
+
+  ml-service:
+    container_name: hippa-home-ml-service
+    image: ${ML_IMAGE:?ML_IMAGE is required}
+    restart: unless-stopped
+    networks:
+      - hippa_home_private
+    expose:
+      - "8000"
+
+  frontend:
+    container_name: hippa-home-frontend
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
+    restart: unless-stopped
+    networks:
+      - hippa_home_private
+    expose:
+      - "8080"
+
+  caddy:
+    profiles:
+      - standalone-caddy
+    container_name: hippa-home-caddy
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:-admin@hippa-home.duckdns.org}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - hippa_home_caddy_data:/data
+      - hippa_home_caddy_config:/config
+    networks:
+      - hippa_home_private
+
+volumes:
+  hippa_home_pgdata:
+  hippa_home_backend_storage:
+  hippa_home_backend_logs:
+  hippa_home_caddy_data:
+  hippa_home_caddy_config:
+
+networks:
+  hippa_home_private:
+    name: hippa_home_private
+    driver: bridge
