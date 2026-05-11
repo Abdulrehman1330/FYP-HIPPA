@@ -717,9 +717,9 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Changed: Replaced the ML service's XGBoost/SHAP implementation with a scikit-learn Logistic Regression baseline trained on synthetic readmission data. Removed `xgboost` and `shap` from the ML service requirements and changed explanations to coefficient-based top factors.
 - Why: Abdul asked to keep the ML model simpler for now.
 - Current status: The `/predict` response shape remains compatible with the backend: `risk_score`, `risk_class`, and `explanation.top_factors` are still returned.
-- Validation: Host Anaconda direct training failed because pandas/numpy binaries are mismatched, so validation used the production Docker path. The ML Docker image built successfully, trained the Logistic Regression baseline with AUROC `0.715`, `/health` returned `model_type=logistic_regression`, and `/predict` returned a compatible high-risk response with coefficient-based top factors.
-- Next steps: Push to `main` so GitHub Actions redeploys the simplified model to Contabo.
-- Blockers or risks: This is a synthetic demo baseline, not a clinically validated model.
+- Validation: Host Anaconda direct training failed because pandas/numpy binaries are mismatched, so validation used the production Docker path. The ML Docker image built successfully, trained the Logistic Regression baseline with AUROC `0.715`, local container `/health` returned `model_type=logistic_regression`, and local container `/predict` returned a compatible high-risk response with coefficient-based top factors. The deployed VPS ML container also returned `model_type=logistic_regression` and `model_version=logistic-regression-v0.1-synthetic`.
+- Next steps: Push the workflow retry fix and confirm the next GitHub Actions run completes cleanly.
+- Blockers or risks: This is a synthetic demo baseline, not a clinically validated model. The first deploy of this change updated the VPS containers but the GitHub job failed at the final frontend check because DuckDNS resolution briefly failed; the workflow now retries public health checks.
 
 ### 2026-04-29 - Documentation Asset Check
 
