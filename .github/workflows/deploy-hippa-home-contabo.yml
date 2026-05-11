@@ -250,7 +250,7 @@ jobs:
           docker compose --env-file .env up -d --remove-orphans
           docker network connect hippa_home_private ash-health-agent-caddy 2>/dev/null || true
           docker compose --env-file .env ps
-REMOTE
+          REMOTE
 
       - name: Verify public health
         run: |

@@ -699,7 +699,8 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Changed: Configured GitHub Actions repository secrets for VPS SSH, database, JWT, owner bootstrap, and Caddy email. Updated the deploy workflow to use GitHub's built-in `GITHUB_TOKEN` for GHCR instead of requiring separate GHCR secrets.
 - Why: Abdul wants pushes to `main` to deploy automatically without committing VPS keys or runtime secrets.
 - Current status: Required deployment secrets are present in GitHub. The VPS private key remains local and ignored; it was uploaded only as an encrypted Actions secret.
-- Next steps: Commit and push the deployment workflow and supporting Docker/config files to `main`; that push should trigger the first automatic workflow deploy.
+- Validation: First pushed workflow triggered but failed before jobs were created because the remote SSH heredoc terminator was not indented as YAML block content. The workflow file was corrected and pushed again.
+- Next steps: Confirm the corrected GitHub Actions run completes and redeploys the HIPAA Home containers.
 - Blockers or risks: GitHub Actions will use the existing edge Caddy route already configured on the VPS. If the VPS is rebuilt from scratch, the edge Caddy route must be restored or the standalone Caddy profile must be used.
 
 ### 2026-04-29 - Documentation Asset Check
