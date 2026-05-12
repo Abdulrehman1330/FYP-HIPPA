@@ -10,6 +10,15 @@
 
 ## Recent Implementation Notes
 
+### 2026-05-12 - Old FastAPI RAG API Removed
+
+- Changed: Removed the unused `backend/api` FastAPI RAG scaffold, demo header-auth/audit files, old RAG API tests, static chatbot demo, and stale RAG API docs. Updated root `docker-compose.yml` to build the live Node/Express backend from `backend/` and include OCR/ML services.
+- Why: The current application uses `backend/src` Express routes for RAG, POC, risk, auth, documents, and audit. Keeping the old `/rag/question` FastAPI demo created confusion about which backend Abdul should explain and run.
+- Current status: The live RAG API remains at `POST /api/v1/patient/rag/chat` and `POST /api/v1/patients/:patientId/rag/chat`. The reusable Python RAG prototype modules under `backend/modules/poc` were kept for algorithm/reference tests.
+- Validation: Node syntax checks passed for `src/app.js`, `src/routes/rag.routes.js`, `src/services/rag.service.js`, and `src/services/poc.service.js`. Remaining Python RAG/review unit tests passed: 12 tests. `docker compose config --quiet` passed.
+- Work left: If the team no longer needs historical RAG milestone notes, clean older progress-history entries or convert them into an archived summary.
+- Blockers or risks: None for the live app. Historical progress entries still mention the old FastAPI demo as past work.
+
 ### 2026-05-12 - Production LLM Env Reload And RAG Database Verification
 
 - Changed: Manually forced the live backend container to recreate with the deployed runtime `.env`, then updated the Contabo GitHub Actions workflow to force-recreate the backend after deploy so future API-key/env changes are loaded.

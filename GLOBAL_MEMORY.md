@@ -14,7 +14,7 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 
 ## Backend And Database
 
-- The production backend is Node/Express/Prisma under `backend/src`, not the older FastAPI scaffold under `backend/api`.
+- The production backend is Node/Express/Prisma under `backend/src`; the old FastAPI RAG scaffold under `backend/api` has been removed.
 - Before opening backend files by guessed name, confirm with `rg --files`; document routes are in `backend/src/routes/documents.routes.js`, and `assertCaseload` lives in `backend/src/middleware/auth.middleware.js`.
 - Prisma Docker builds must copy `prisma/` before `npm ci` because `postinstall` runs `prisma generate`.
 - Run `prisma migrate deploy` before starting the production backend against a fresh database.
@@ -39,5 +39,6 @@ Short, reusable lessons for this HIPAA Home Health university project. Keep this
 - Local Anaconda can have pandas/numpy binary mismatches; validate Python services in their Docker image when local imports fail with `numpy.dtype size changed`.
 - If Prisma install/generate fails on Windows, stop any running backend first because Prisma engine DLLs can be locked by the Node process.
 - Windows OpenSSH ignores private keys with broad ACLs. For local deploy keys, remove inherited/group access and keep read permission only for the current user, Administrators, and SYSTEM.
+- GitHub CLI `gh` is not installed on this Windows workspace; use plain `git push` for branch publishing, and install/authenticate `gh` only when PR automation is required.
 - Shared VPS disk can be tight; `docker builder prune -af` is a safe first cleanup step for build cache before heavy ML/OCR image builds because it does not remove running containers or volumes.
 - If provider keys were pasted into chat or surfaced during local validation, rotate them before production use.
