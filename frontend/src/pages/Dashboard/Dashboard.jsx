@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { GlassCard, GradientButton, Icon, Avatar, Sparkline, StatusPill, ConfidenceBadge } from '../../components/ui';
-import { KPIS, ACTIVITY, DOCS as MOCK_DOCS, PATIENTS as MOCK_PATIENTS } from '../../data';
+import { KPIS, ACTIVITY } from '../../data';
 import { documentService } from '../../services';
 import PatientDashboard from './PatientDashboard';
 
@@ -20,10 +20,10 @@ const Dashboard = ({ user, role, goto }) => {
         if (Array.isArray(list) && list.length > 0) {
           setDocs(list);
         } else {
-          setDocs(MOCK_DOCS.slice(0, 5));
+          setDocs([]);
         }
       })
-      .catch(() => setDocs(MOCK_DOCS.slice(0, 5)))
+      .catch(() => setDocs([]))
       .finally(() => setLoading(false));
   }, [role]);
 
@@ -44,7 +44,10 @@ const Dashboard = ({ user, role, goto }) => {
       confAvg: d.extractedFields?.length
         ? d.extractedFields.reduce((a, f) => a + (f.confidence || 0), 0) / d.extractedFields.length
         : null,
-      patientName: d.extractedFields?.find(f => f.fieldName === 'patient_name')?.fieldValue || null,
+      patientId: d.patientId || d.patient?.id || null,
+      patientName: d.patient?.user
+        ? `${d.patient.user.firstName || ''} ${d.patient.user.lastName || ''}`.trim()
+        : null,
     };
   });
 
@@ -103,11 +106,17 @@ const Dashboard = ({ user, role, goto }) => {
                 <tr><th>Document</th><th>Patient</th><th>Confidence</th><th>Status</th><th>Updated</th></tr>
               </thead>
               <tbody>
+                {displayDocs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted" style={{ textAlign: "center", padding: 28 }}>
+                      No recent clinical documents yet.
+                    </td>
+                  </tr>
+                )}
                 {displayDocs.map(d => {
-                  // Try to find patient from mock data if we have patientId (legacy), or use extracted name
-                  const pName = d.patientName || MOCK_PATIENTS.find(pt => pt.id === d.patientId)?.name || '—';
+                  const pName = d.patientName || '—';
                   return (
-                    <tr key={d.id} onClick={() => goto("review", { docId: d.id })}>
+                    <tr key={d.id} onClick={() => goto("review", { docId: d.id, patientId: d.patientId, patientName: pName !== '—' ? pName : undefined })}>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ width: 32, height: 40, borderRadius: 4, background: "linear-gradient(180deg, var(--glass-bg-strong), var(--glass-bg))", border: "1px solid var(--glass-border-soft)", display: "grid", placeItems: "center", flexShrink: 0 }}>

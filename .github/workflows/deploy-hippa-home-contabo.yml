@@ -1,0 +1,262 @@
+name: Deploy HIPAA Home to Contabo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEPLOY_DIR: /home/deploy/hippa-home
+  FRONTEND_API_BASE_URL: https://hippa-home-api.duckdns.org/api/v1
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          OWNER_TEMP_PASSWORD: ${{ secrets.OWNER_TEMP_PASSWORD }}
+          OWNER_FIRST_NAME: ${{ secrets.OWNER_FIRST_NAME }}
+          OWNER_LAST_NAME: ${{ secrets.OWNER_LAST_NAME }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            VPS_HOST VPS_SSH_PORT VPS_SSH_USER VPS_SSH_KEY \
+            POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL \
+            JWT_SECRET JWT_REFRESH_SECRET \
+            OWNER_EMAIL OWNER_TEMP_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME
+          do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required GitHub secret(s): %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Set image names
+        id: meta
+        run: |
+          set -euo pipefail
+          image_prefix="$(printf 'ghcr.io/%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "image_prefix=${image_prefix}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate backend
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://hippa_home_app:placeholder@localhost:5432/hippa_home_prod
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma validate
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ env.FRONTEND_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          build-args: |
+            VITE_API_BASE_URL=${{ env.FRONTEND_API_BASE_URL }}
+          tags: |
+            ${{ steps.meta.outputs.image_prefix }}/frontend:${{ steps.meta.outputs.sha_tag }}
+            ${{ steps.meta.outputs.image_prefix }}/frontend:latest
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_prefix }}/backend:${{ steps.meta.outputs.sha_tag }}
+            ${{ steps.meta.outputs.image_prefix }}/backend:latest
+
+      - name: Build and push OCR image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/ocr-service
+          file: ./backend/ocr-service/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_prefix }}/ocr-service:${{ steps.meta.outputs.sha_tag }}
+            ${{ steps.meta.outputs.image_prefix }}/ocr-service:latest
+
+      - name: Build and push ML image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/ml/service
+          file: ./backend/ml/service/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_prefix }}/ml-service:${{ steps.meta.outputs.sha_tag }}
+            ${{ steps.meta.outputs.image_prefix }}/ml-service:latest
+
+      - name: Prepare runtime environment file
+        env:
+          FRONTEND_IMAGE: ${{ steps.meta.outputs.image_prefix }}/frontend:${{ steps.meta.outputs.sha_tag }}
+          BACKEND_IMAGE: ${{ steps.meta.outputs.image_prefix }}/backend:${{ steps.meta.outputs.sha_tag }}
+          OCR_IMAGE: ${{ steps.meta.outputs.image_prefix }}/ocr-service:${{ steps.meta.outputs.sha_tag }}
+          ML_IMAGE: ${{ steps.meta.outputs.image_prefix }}/ml-service:${{ steps.meta.outputs.sha_tag }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          OWNER_TEMP_PASSWORD: ${{ secrets.OWNER_TEMP_PASSWORD }}
+          OWNER_FIRST_NAME: ${{ secrets.OWNER_FIRST_NAME }}
+          OWNER_LAST_NAME: ${{ secrets.OWNER_LAST_NAME }}
+          CADDY_ACME_EMAIL: ${{ secrets.CADDY_ACME_EMAIL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy
+          {
+            printf 'FRONTEND_IMAGE=%s\n' "$FRONTEND_IMAGE"
+            printf 'BACKEND_IMAGE=%s\n' "$BACKEND_IMAGE"
+            printf 'OCR_IMAGE=%s\n' "$OCR_IMAGE"
+            printf 'ML_IMAGE=%s\n' "$ML_IMAGE"
+            printf 'POSTGRES_DB=%s\n' "$POSTGRES_DB"
+            printf 'POSTGRES_USER=%s\n' "$POSTGRES_USER"
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'JWT_REFRESH_SECRET=%s\n' "$JWT_REFRESH_SECRET"
+            printf 'JWT_ACCESS_TTL=1h\n'
+            printf 'JWT_REFRESH_TTL=7d\n'
+            printf 'PUBLIC_REGISTRATION_ENABLED=false\n'
+            printf 'PASSWORD_MIN_LENGTH=12\n'
+            printf 'BCRYPT_COST=12\n'
+            printf 'OWNER_EMAIL=%s\n' "$OWNER_EMAIL"
+            printf 'OWNER_TEMP_PASSWORD=%s\n' "$OWNER_TEMP_PASSWORD"
+            printf 'OWNER_FIRST_NAME=%s\n' "$OWNER_FIRST_NAME"
+            printf 'OWNER_LAST_NAME=%s\n' "$OWNER_LAST_NAME"
+            printf 'CADDY_ACME_EMAIL=%s\n' "${CADDY_ACME_EMAIL:-admin@hippa-home.duckdns.org}"
+            printf 'LLM_PROVIDER=auto\n'
+            printf 'HIPPA_HOME_OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY"
+            printf 'OPENAI_MODEL=gpt-4o-mini\n'
+            printf 'HIPPA_HOME_GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+            printf 'GEMINI_MODEL=gemini-2.5-flash\n'
+            printf 'HIPPA_HOME_ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
+            printf 'ANTHROPIC_MODEL=claude-3-5-haiku-20241022\n'
+            printf 'ANTHROPIC_VERSION=2023-06-01\n'
+          } > .deploy/.env
+          chmod 600 .deploy/.env
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/hippa_home_deploy
+          chmod 600 ~/.ssh/hippa_home_deploy
+          ssh-keyscan -p "$VPS_SSH_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload deployment package
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/hippa_home_deploy -p "$VPS_SSH_PORT" "$VPS_SSH_USER@$VPS_HOST" \
+            'rm -rf /tmp/hippa-home-deploy && mkdir -p /tmp/hippa-home-deploy'
+          scp -i ~/.ssh/hippa_home_deploy -P "$VPS_SSH_PORT" \
+            infra/contabo/hippa-home/docker-compose.yml \
+            infra/contabo/hippa-home/Caddyfile \
+            .deploy/.env \
+            "$VPS_SSH_USER@$VPS_HOST:/tmp/hippa-home-deploy/"
+
+      - name: Deploy on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/hippa_home_deploy -p "$VPS_SSH_PORT" "$VPS_SSH_USER@$VPS_HOST" \
+            "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
+
+          ssh -i ~/.ssh/hippa_home_deploy -p "$VPS_SSH_PORT" "$VPS_SSH_USER@$VPS_HOST" <<'REMOTE'
+          set -euo pipefail
+          APP_DIR="/home/deploy/hippa-home"
+          mkdir -p "$APP_DIR"
+
+          cp /tmp/hippa-home-deploy/docker-compose.yml "$APP_DIR/docker-compose.yml"
+          cp /tmp/hippa-home-deploy/Caddyfile "$APP_DIR/Caddyfile"
+          cp /tmp/hippa-home-deploy/.env "$APP_DIR/.env"
+          chmod 600 "$APP_DIR/.env"
+
+          cd "$APP_DIR"
+          docker compose --env-file .env pull
+          docker compose --env-file .env up -d postgres ocr-service ml-service frontend
+          docker compose --env-file .env run --rm backend npm run db:migrate
+          docker compose --env-file .env run --rm backend npm run seed:owner
+          docker compose --env-file .env up -d --remove-orphans
+          docker compose --env-file .env up -d --force-recreate --no-deps backend
+          docker network connect hippa_home_private ash-health-agent-caddy 2>/dev/null || true
+          docker compose --env-file .env ps
+          REMOTE
+
+      - name: Verify public health
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --retry 6 --retry-all-errors --retry-delay 10 https://hippa-home-api.duckdns.org/api/v1/health
+          curl --fail --show-error --silent --head --retry 6 --retry-all-errors --retry-delay 10 https://hippa-home.duckdns.org

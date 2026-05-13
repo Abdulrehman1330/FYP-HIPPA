@@ -8,6 +8,37 @@
 
 ---
 
+## Recent Implementation Notes
+
+### 2026-05-12 - Old FastAPI RAG API Removed
+
+- Changed: Removed the unused `backend/api` FastAPI RAG scaffold, demo header-auth/audit files, old RAG API tests, static chatbot demo, and stale RAG API docs. Updated root `docker-compose.yml` to build the live Node/Express backend from `backend/` and include OCR/ML services.
+- Why: The current application uses `backend/src` Express routes for RAG, POC, risk, auth, documents, and audit. Keeping the old `/rag/question` FastAPI demo created confusion about which backend Abdul should explain and run.
+- Current status: The live RAG API remains at `POST /api/v1/patient/rag/chat` and `POST /api/v1/patients/:patientId/rag/chat`. The reusable Python RAG prototype modules under `backend/modules/poc` were kept for algorithm/reference tests.
+- Validation: Node syntax checks passed for `src/app.js`, `src/routes/rag.routes.js`, `src/services/rag.service.js`, and `src/services/poc.service.js`. Remaining Python RAG/review unit tests passed: 12 tests. `docker compose config --quiet` passed.
+- Work left: If the team no longer needs historical RAG milestone notes, clean older progress-history entries or convert them into an archived summary.
+- Blockers or risks: None for the live app. Historical progress entries still mention the old FastAPI demo as past work.
+
+### 2026-05-12 - Production LLM Env Reload And RAG Database Verification
+
+- Changed: Manually forced the live backend container to recreate with the deployed runtime `.env`, then updated the Contabo GitHub Actions workflow to force-recreate the backend after deploy so future API-key/env changes are loaded.
+- Why: The VPS `.env` contained a Gemini key, but the running backend container was stale and still had `LLM_PROVIDER=none`, so POC generation used deterministic fallback without attempting the LLM.
+- Current status: Live POC generation now reports `mode=llm`, `provider=gemini`, `llmSectionCount=7`, and `fallbackSectionCount=0`. RAG was verified to read approved patient evidence from PostgreSQL through Prisma, including extracted fields and latest generated POC sections.
+- Validation: Live backend env check showed `LLM_PROVIDER=auto` and Gemini key present after recreate. A live generation test produced an all-LLM POC. A live RAG test returned database-backed citations pointing to generated POC/document IDs.
+- Work left: Push the workflow fix and confirm the next GitHub Actions deploy succeeds with backend forced recreation.
+- Blockers or risks: Gemini can still fall back later if the provider key is invalid, quota-limited, or removed from GitHub secrets.
+
+### 2026-05-12 - Patient-Scoped Clinical Upload, Review, And POC Flow
+
+- Changed: Clinical upload now requires a selected patient and sends `patientId` with the document upload. The POC screen now asks clinicians/admins/doctors to select the patient and approved source document before generating. Review and dashboard navigation carry `patientId` and `patientName` forward, and the dashboard/review queue no longer falls back to bundled demo records when backend data is empty.
+- Why: Clinical screens could show Alexander/demo fallback data or generate a Plan of Care from the latest accessible document instead of the intended patient's document.
+- Current status: Upload, review approval, patient detail, and POC generation are patient-scoped. Backend document listing/review detail now include patient context, and POC latest/generate-latest accepts `patientId` filters.
+- Validation: `npm run build` passed in `frontend`. Backend syntax checks passed for `backend/src/routes/poc.routes.js`, `backend/src/services/document.service.js`, `backend/src/services/poc.service.js`, and `backend/src/services/review.service.js`.
+- Work left: Run an authenticated browser smoke test with two real/synthetic patients: upload one document for each, approve both, then confirm POC generation uses the selected patient's selected source document.
+- Blockers or risks: `npm run lint` still fails on existing repo-wide React lint rules such as `react-hooks/set-state-in-effect`; the production build is passing. The configured Ash Systems global memory drive `D:` is unavailable in this workspace, so the project-specific `GLOBAL_MEMORY.md` was updated instead.
+
+---
+
 ## Product Goal
 
 Build a secure web platform for home health and hospice agencies that:
@@ -668,6 +699,59 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 
 ## Session Notes
 
+### 2026-05-12 - Isolated Contabo Docker Deployment Scaffold
+
+- Changed: Added production Dockerfiles for the Node backend and Vite frontend, Docker ignore files, an isolated Contabo compose/Caddy deployment package under `infra/contabo/hippa-home`, and a GitHub Actions workflow for GHCR image builds plus VPS deployment to `/opt/hippa-home`.
+- Why: Abdul wants the university project deployed on Contabo with `hippa-home.duckdns.org` and `hippa-home-api.duckdns.org`, separate from Ash Systems runtime paths, databases, networks, and secrets.
+- Current status: The production stack uses only Caddy public ports `80/443`; Postgres, backend, OCR, ML, and frontend are internal compose services. Public registration is disabled by default in production, and owner bootstrap uses GitHub secret-provided `OWNER_*` variables. Optional AI keys are mapped through project-scoped Compose variables to reduce accidental local shell secret leakage.
+- Validation: Frontend production build passed. Prisma schema validation passed. Backend syntax checks passed for deployment-touched files. Docker images built successfully for frontend, backend, OCR, and ML. ML health smoke test returned healthy with `model_loaded=true`. Compose config validation passed after removing the required local `.env` dependency.
+- Next steps: Add required GitHub repository secrets, confirm DuckDNS records point to the Contabo VPS IP, then run the `Deploy HIPAA Home to Contabo` workflow manually before relying on push deployment.
+- Blockers or risks: The configured global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` is unavailable on this machine, so reusable deployment/error lessons could not be persisted there. A local Compose validation run resolved generic host AI key variables before the deployment env names were scoped; rotate any real AI keys present in this machine's environment before production use.
+
+### 2026-05-12 - Project Local Global Memory Created
+
+- Changed: Created `GLOBAL_MEMORY.md` at the FYP repo root for project-specific reusable lessons and deployment memory. Updated `AGENTS.md` so future sessions read and maintain this file.
+- Why: The previous configured memory path belonged to Ash Systems and was unavailable on this machine; Abdul wants this university project to keep its own memory.
+- Current status: Future FYP work should update `C:\Programming\FYP\GLOBAL_MEMORY.md` instead of the Ash Systems memory file.
+- Next steps: Keep this memory concise and add only durable lessons, environment quirks, and recurring project conventions.
+- Blockers or risks: Older `PROGRESS.md` entries still mention the old Ash Systems path historically, but the active memory file for this project is now repo-local.
+
+### 2026-05-12 - HIPAA Home Deployed To Contabo
+
+- Changed: Deployed the FYP stack on the Contabo VPS under `/home/deploy/hippa-home`, built production images on the VPS, started isolated Postgres/backend/frontend/OCR/ML containers, ran Prisma migrations, seeded the owner account, and added DuckDNS routes to the existing edge Caddy.
+- Why: Abdul asked to deploy the Dockerized university project using `hippa-home.duckdns.org` and `hippa-home-api.duckdns.org` while keeping it separate from Ash Systems app networks and databases.
+- Current status: `https://hippa-home.duckdns.org` serves the frontend and `https://hippa-home-api.duckdns.org/api/v1/health` returns healthy with database connected. Public registration returns `403`, and owner login returns `200`.
+- Validation: Docker Compose shows all five HIPAA Home containers running; backend, Postgres, and OCR health checks are healthy; ML health reports `model_loaded=true`; Caddy config validated before restart.
+- Next steps: Change the owner temporary password after first login, then add GitHub repository secrets if future deployments should run through the workflow instead of direct SSH.
+- Blockers or risks: The VPS `deploy` user has no passwordless sudo, so the live path is `/home/deploy/hippa-home` instead of `/opt/hippa-home`. The existing edge Caddy owns `80/443`, so this deployment uses that edge proxy rather than starting the standalone Caddy profile.
+
+### 2026-05-12 - GitHub Auto Deploy Secrets Configured
+
+- Changed: Configured GitHub Actions repository secrets for VPS SSH, database, JWT, owner bootstrap, and Caddy email. Updated the deploy workflow to use GitHub's built-in `GITHUB_TOKEN` for GHCR instead of requiring separate GHCR secrets.
+- Why: Abdul wants pushes to `main` to deploy automatically without committing VPS keys or runtime secrets.
+- Current status: Required deployment secrets are present in GitHub. The VPS private key remains local and ignored; it was uploaded only as an encrypted Actions secret. Pushes to `main` now run the Contabo deploy workflow automatically.
+- Validation: GitHub Actions run `25699122876` completed successfully for commit `31367d8`. Live smoke checks passed: `https://hippa-home-api.duckdns.org/api/v1/health` returned healthy with database connected, and `https://hippa-home.duckdns.org` returned HTTP 200.
+- Next steps: Use the seeded owner account to change the temporary password, then treat future `main` pushes as production deploys.
+- Blockers or risks: GitHub Actions will use the existing edge Caddy route already configured on the VPS. If the VPS is rebuilt from scratch, the edge Caddy route must be restored or the standalone Caddy profile must be used.
+
+### 2026-05-12 - Synthetic Demo Data Seeded On VPS
+
+- Changed: Seeded the live Contabo database with one synthetic demo clinic, three synthetic patients, three document records, 15 extracted fields, two generated POCs, one risk score, and demo audit entries.
+- Why: Abdul asked to fill sample data for the deployed university demo without using real PHI.
+- Current status: Demo credentials were generated with strong random temporary passwords and stored only in ignored local access material under `contabo-vps-access/hippa-home-demo-credentials.json`. Public registration remains disabled.
+- Validation: Live API health still returns healthy with database connected. A seeded clinician login succeeds and returns `mustChangePassword=true`, so first use is forced through the password-change flow.
+- Next steps: Use the local ignored credential file for the demo accounts, change each temporary password at first login, and keep all sample records synthetic.
+- Blockers or risks: The GitHub repository is public, so committed content must stay free of PHI and secret values. GitHub Actions secret names are visible to authorized repo users, but values remain encrypted and are not committed.
+
+### 2026-05-12 - ML Model Simplified To Logistic Regression
+
+- Changed: Replaced the ML service's XGBoost/SHAP implementation with a scikit-learn Logistic Regression baseline trained on synthetic readmission data. Removed `xgboost` and `shap` from the ML service requirements and changed explanations to coefficient-based top factors.
+- Why: Abdul asked to keep the ML model simpler for now.
+- Current status: The `/predict` response shape remains compatible with the backend: `risk_score`, `risk_class`, and `explanation.top_factors` are still returned.
+- Validation: Host Anaconda direct training failed because pandas/numpy binaries are mismatched, so validation used the production Docker path. The ML Docker image built successfully, trained the Logistic Regression baseline with AUROC `0.715`, local container `/health` returned `model_type=logistic_regression`, and local container `/predict` returned a compatible high-risk response with coefficient-based top factors. The deployed VPS ML container also returned `model_type=logistic_regression` and `model_version=logistic-regression-v0.1-synthetic`.
+- Next steps: Push the workflow retry fix and confirm the next GitHub Actions run completes cleanly.
+- Blockers or risks: This is a synthetic demo baseline, not a clinically validated model. The first deploy of this change updated the VPS containers but the GitHub job failed at the final frontend check because DuckDNS resolution briefly failed; the workflow now retries public health checks.
+
 ### 2026-04-29 - Documentation Asset Check
 
 - Changed: Verified available documentation assets before starting report work.
@@ -994,6 +1078,33 @@ Prepare the final report, pilot evidence, presentation flow, and handoff materia
 - Current status: Gemini provider is selected locally, but the actual key value was not written by the assistant to avoid duplicating a secret into command/tool logs. Abdul should paste the key directly into `GEMINI_API_KEY=""` in `backend/.env`.
 - Work left: After the key is pasted, restart backend and regenerate POC to confirm `generator.provider = "gemini"` and `llmSectionCount > 0`.
 - Blockers or risks: The Gemini key was pasted into chat, so it should be treated as exposed and rotated after testing.
+
+### 2026-05-12 - POC Source Document Selector Added
+
+- Changed: Added a source-document selector to the clinical Plan of Care screen. After selecting a patient, the UI loads that patient's approved/generatable documents (`APPROVED`, `POC_GENERATED`, `RISK_SCORED`) and requires choosing the exact document before generation. Generation now calls `POST /poc/generate/:documentId` for the selected document. Review queue/detail responses now include patient context, and Review approval passes `patientId`/`patientName` into the POC screen.
+- Why: If a patient had two documents, the previous patient-only flow could still use the newest document automatically. The clinical workflow now makes the source document explicit and defensible.
+- Current status: POC generation is patient-scoped and document-specific. Sidebar flow requires patient plus document selection; review flow carries the approved document into POC directly.
+- Validation: Frontend production build passed. Backend syntax checks passed for review, POC service, and POC routes. Backend restarted and health check is healthy.
+- Work left: Browser-test a patient with two approved documents and confirm selecting each document generates/loads the matching POC.
+- Blockers or risks: The configured global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` is still unavailable on this machine.
+
+### 2026-05-12 - Clinical POC Patient Selector Added
+
+- Changed: Added a patient selector directly to the clinical Plan of Care screen. When POC is opened from the sidebar without a patient context, clinicians/admins/doctors now choose a patient first. Generate POC is disabled until a patient or document is selected.
+- Why: The backend was already patient-aware, but the clinical POC page did not ask which patient to use when opened globally, so users could not clearly control which patient's care plan was being generated.
+- Current status: Sidebar POC flow now explicitly asks for patient context and calls patient-filtered POC APIs. Patient-chart POC flow still preselects and locks the chart patient.
+- Validation: Frontend production build passed.
+- Work left: Browser-test clinician sidebar POC by selecting two different patients and confirming the header/patient selector changes the loaded/generated POC.
+- Blockers or risks: The configured global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` is still unavailable on this machine.
+
+### 2026-05-12 - Patient-Specific Clinical Upload and POC Flow
+
+- Changed: Updated clinical patient navigation so selected `patientId` and patient name are carried into Upload, Review, and Plan of Care screens. Upload now requires a selected patient and sends `patientId` in the multipart form. Clinical patient detail now loads from patient endpoints instead of treating a patient ID as a document ID. POC latest/generate-latest APIs now accept an optional `patientId` and filter source documents to that patient before loading or generating care plans.
+- Why: The clinical workflow could show Alexander or another fallback patient because backend patient IDs were incorrectly used as document IDs, upload allowed unassigned documents, and sidebar/latest POC generation selected the latest accessible document globally instead of the selected patient's document.
+- Current status: Patient cards and patient detail actions now open patient-scoped upload/POC flows. Sidebar upload still works, but it requires choosing a patient first. Backend POC generation refuses missing patient evidence instead of silently using another patient's latest document when a patient filter is provided.
+- Validation: Frontend production build passed. Backend syntax checks passed for POC routes, POC service, and document service. Backend was restarted and `GET /api/v1/health` is healthy with a fresh uptime. Authenticated clinician smoke test confirmed `GET /api/v1/poc/latest?patientId=f8b8734e-4b61-4c9b-934a-a9176d0f2e9d` returns Linh Nguyen's selected document, not a global latest document.
+- Work left: Do an authenticated browser test with two different patients: upload one document per patient, approve/extract, then confirm each patient's POC uses only that patient's approved fields.
+- Blockers or risks: The configured global memory path `D:\1.Business\Ash Systems\assets\GLOBAL_MEMORY.md` is not available on this machine, so reusable error notes could not be persisted there.
 
 ### 2026-05-11 - Gemini POC Generation Verified
 

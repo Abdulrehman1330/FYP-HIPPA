@@ -27,6 +27,10 @@ function validatePassword(password) {
  *   - everyone else             → CLINICIAN by default
  */
 async function registerUser(email, password, firstName, lastName, _requestedRole) {
+  if (!config.publicRegistrationEnabled) {
+    throw new AppError("Public registration is disabled", 403);
+  }
+
   if (!email || !firstName || !lastName) throw new AppError("VALIDATION_ERROR", 400);
   validatePassword(password);
 

@@ -225,7 +225,7 @@ function evidenceToPrompt(evidence) {
     .join("\n");
 }
 
-function buildClinicalDocumentScope(user) {
+function buildClinicalDocumentScope(user, { patientId } = {}) {
   const baseScope = {
     status: { in: GENERATABLE_DOCUMENT_STATUSES },
     extractedFields: {
@@ -233,6 +233,7 @@ function buildClinicalDocumentScope(user) {
         fieldValue: { not: null },
       },
     },
+    ...(patientId ? { patientId } : {}),
   };
 
   switch (user.role) {
@@ -258,9 +259,9 @@ function buildClinicalDocumentScope(user) {
   }
 }
 
-async function findLatestAccessiblePocDocument(user) {
+async function findLatestAccessiblePocDocument(user, { patientId } = {}) {
   const document = await prisma.document.findFirst({
-    where: buildClinicalDocumentScope(user),
+    where: buildClinicalDocumentScope(user, { patientId }),
     orderBy: [
       { updatedAt: "desc" },
       { uploadedAt: "desc" },
@@ -284,7 +285,12 @@ async function findLatestAccessiblePocDocument(user) {
   });
 
   if (!document) {
-    throw new AppError("No approved document with extracted fields found for POC generation", 404);
+    throw new AppError(
+      patientId
+        ? "No approved document with extracted fields found for this patient"
+        : "No approved document with extracted fields found for POC generation",
+      404,
+    );
   }
 
   return document;
@@ -808,8 +814,8 @@ async function generatePoc(documentId, userId) {
   };
 }
 
-async function generateLatestPoc(user) {
-  const document = await findLatestAccessiblePocDocument(user);
+async function generateLatestPoc(user, { patientId } = {}) {
+  const document = await findLatestAccessiblePocDocument(user, { patientId });
   const result = await generatePoc(document.id, user.id);
   return {
     ...result,
@@ -829,9 +835,9 @@ async function getLatestPoc(documentId) {
   };
 }
 
-async function getLatestAccessiblePoc(user) {
+async function getLatestAccessiblePoc(user, { patientId } = {}) {
   const documents = await prisma.document.findMany({
-    where: buildClinicalDocumentScope(user),
+    where: buildClinicalDocumentScope(user, { patientId }),
     orderBy: [
       { updatedAt: "desc" },
       { uploadedAt: "desc" },
@@ -857,14 +863,14 @@ async function getLatestAccessiblePoc(user) {
 
   const documentIds = documents.map((document) => document.id);
   if (documentIds.length === 0) {
-    throw new AppError("POC not found", 404);
+    throw new AppError(patientId ? "No POC source document found for this patient" : "POC not found", 404);
   }
 
   const poc = await prisma.generatedPoc.findFirst({
     where: { documentId: { in: documentIds } },
     orderBy: { generatedAt: "desc" },
   });
-  if (!poc) throw new AppError("POC not found", 404);
+  if (!poc) throw new AppError(patientId ? "No generated Plan of Care found for this patient" : "POC not found", 404);
 
   return {
     ...poc,

@@ -1,8 +1,10 @@
 require("dotenv").config();
 
+const nodeEnv = process.env.NODE_ENV || "development";
+
 const config = {
   port: parseInt(process.env.PORT || "3000"),
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv,
   databaseUrl: process.env.DATABASE_URL || "",
 
   // JWT — access + refresh
@@ -30,6 +32,7 @@ const config = {
 
   // Password policy (relaxed for dev — set via env in prod)
   passwordMinLength: parseInt(process.env.PASSWORD_MIN_LENGTH || "8", 10),
+  publicRegistrationEnabled: (process.env.PUBLIC_REGISTRATION_ENABLED || (nodeEnv === "production" ? "false" : "true")).toLowerCase() === "true",
 
   // Bcrypt
   bcryptCost: parseInt(process.env.BCRYPT_COST || "10", 10),

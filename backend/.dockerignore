@@ -1,0 +1,10 @@
+node_modules
+logs
+storage
+.env
+.env.*
+.codex-backend.log
+.codex-backend.err
+__pycache__
+*.pyc
+api/__pycache__

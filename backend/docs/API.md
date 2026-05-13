@@ -315,7 +315,7 @@ a heuristic fallback so the frontend can integrate against a stable shape.
       { "feature": "age", "value": 75 },
       { "feature": "has_chf", "value": 1 }
     ],
-    "model_version": "xgboost-v0.3"  // or "fallback" when ML_SERVICE_URL unset
+    "model_version": "logistic-regression-v0.1-synthetic"  // or "fallback" when ML_SERVICE_URL unset
   }
 }}
 ```

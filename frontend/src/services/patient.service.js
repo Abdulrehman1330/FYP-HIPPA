@@ -21,6 +21,16 @@ const patientService = {
     return data.data || data;
   },
 
+  async getClinicalPatient(id, role) {
+    const endpoint = role === 'ADMIN'
+      ? `/admin/patients/${id}`
+      : role === 'DOCTOR'
+        ? `/doctor/patients/${id}`
+        : `/clinician/patients/${id}`;
+    const { data } = await api.get(endpoint);
+    return data.data || data;
+  },
+
   async create({ email, firstName, lastName }) {
     const { data } = await api.post('/patients', { email, firstName, lastName });
     return data.data || data;

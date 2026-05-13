@@ -2,11 +2,21 @@ import os
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 import joblib
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+
+FEATURES = [
+    "age", "is_female", "mobility_score", "adl_score",
+    "has_wound", "diagnosis_count", "medication_count",
+    "has_high_risk_meds", "prior_hospitalization",
+    "days_since_discharge", "has_diabetes", "has_chf",
+    "has_copd", "low_confidence_fields",
+]
 
 
 def create_synthetic_data(n=2000):
@@ -29,14 +39,22 @@ def create_synthetic_data(n=2000):
     }
     df = pd.DataFrame(d)
 
-    risk = (
-        0.02 * df["age"] + 0.3 * df["prior_hospitalization"] +
-        0.4 * df["has_chf"] + 0.3 * df["has_diabetes"] +
-        -0.01 * df["mobility_score"] - 0.01 * df["adl_score"] +
-        0.02 * df["medication_count"] + 0.3 * df["has_high_risk_meds"] +
-        0.2 * df["has_wound"]
+    logit = (
+        -1.4
+        + 0.035 * (df["age"] - 70)
+        + 0.8 * df["prior_hospitalization"]
+        + 0.75 * df["has_chf"]
+        + 0.45 * df["has_diabetes"]
+        + 0.4 * df["has_copd"]
+        - 0.018 * (df["mobility_score"] - 50)
+        - 0.014 * (df["adl_score"] - 60)
+        + 0.05 * (df["medication_count"] - 8)
+        + 0.55 * df["has_high_risk_meds"]
+        + 0.55 * df["has_wound"]
+        + 0.08 * df["low_confidence_fields"]
+        - 0.008 * df["days_since_discharge"]
     )
-    prob = 1 / (1 + np.exp(-risk + 5))
+    prob = 1 / (1 + np.exp(-logit))
     df["readmitted"] = np.random.binomial(1, prob)
     return df
 
@@ -44,23 +62,31 @@ def create_synthetic_data(n=2000):
 def train():
     print("Generating synthetic data...")
     df = create_synthetic_data()
-    X, y = df.drop("readmitted", axis=1), df["readmitted"]
+    X, y = df[FEATURES], df["readmitted"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     print(f"Train: {len(X_train)}, Test: {len(X_test)}, Readmission rate: {y.mean():.2%}")
 
-    model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42, eval_metric="auc")
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42)),
+    ])
     model.fit(X_train, y_train)
 
     y_prob = model.predict_proba(X_test)[:, 1]
     print(f"AUROC: {roc_auc_score(y_test, y_prob):.3f}")
     print(f"Brier: {brier_score_loss(y_test, y_prob):.3f}")
 
-    calibrated = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
-    calibrated.fit(X_train, y_train)
-
     os.makedirs("model", exist_ok=True)
-    joblib.dump(calibrated, "model/readmission_model.pkl")
+    joblib.dump(
+        {
+            "model": model,
+            "features": FEATURES,
+            "model_type": "logistic_regression",
+            "model_version": "logistic-regression-v0.1-synthetic",
+        },
+        "model/readmission_model.pkl",
+    )
     print("Model saved to model/readmission_model.pkl")
 
 

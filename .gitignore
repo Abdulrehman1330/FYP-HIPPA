@@ -20,6 +20,9 @@ env/
 .env.*
 !.env.example
 
+# Local VPS access material and private deployment keys
+contabo-vps-access/
+
 # Logs
 *.log
 *.err
@@ -31,6 +34,7 @@ Thumbs.db
 .idea/
 
 # Local generated artifacts
+.codex-run/
 TEAM_DETAILED_STEPS_print.html
 tools/
 

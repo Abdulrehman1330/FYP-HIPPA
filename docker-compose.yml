@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -13,18 +11,31 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   backend:
-    build: ./backend/api
+    build: ./backend
     ports:
-      - "8080:8080"
+      - "3000:3000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/healthcare_docs
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/healthcare_docs
       JWT_SECRET: dev-secret-change-in-production
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production
       DOCUMENT_STORAGE_DIR: /app/storage/documents
+      OCR_SERVICE_URL: http://ocr-service:5000
       ML_SERVICE_URL: http://ml-service:8000
     depends_on:
       - postgres
+      - ocr-service
+      - ml-service
     volumes:
       - backend_storage:/app/storage
+
+  ocr-service:
+    build: ./backend/ocr-service
+    ports:
+      - "5000:5000"
+    environment:
+      PYTHONUNBUFFERED: "1"
 
   ml-service:
     build: ./backend/ml/service
