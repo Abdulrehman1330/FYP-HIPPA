@@ -2,13 +2,23 @@
 
 **Project Start Date:** April 03, 2026
 **Target MVP:** 14-16 weeks
-**Current Phase:** Phase 0 Scope Freeze and Kickoff (In Progress)
+**Current Phase:** Phase 7 Integration, Security Hardening, and KPIs (In Progress) - core MVP workflow is built and deployed
+**Last Status Audit:** 2026-11-11 (see "Project Status Audit" note below)
 
-> **Development Guide:** See [AGENTS.md](C:\Programming\FYP\AGENTS.md) for the team methodology and execution rules.
+> **Development Guide:** See [AGENTS.md](AGENTS.md) for the team methodology and execution rules.
 
 ---
 
 ## Recent Implementation Notes
+
+### 2026-11-11 - Project Status Audit
+
+- Changed: Replaced the stale Quick Status table (every phase showed `0/N` and Phase 0) with an evidence-based status per phase. Added an "As-Built Stack" section because the original proposal stack (Next.js, FastAPI, Azure, XGBoost/SHAP) no longer matches the code. Removed the orphaned `backend/tests/unit/test_static_demo_ui.py`, which tested `apps/clinician-web/public/rag-chatbot-demo.html` after that file was deleted in commit `6c77b04`.
+- Why: The tracker understated the project. Code, deployment, and session notes show login/RBAC, upload, OCR, review/approval, POC generation with RAG, risk prediction, audit logs, Docker, CI/CD, and Contabo deployment are implemented, but every checklist was still unticked.
+- Current status: Local branch matches `origin/main` (`37400d8`, 2026-05-13); no new commits on GitHub since then. Live checks on 2026-11-11: `https://hippa-home.duckdns.org` returned 200 and `https://hippa-home-api.duckdns.org/api/v1/health` returned `healthy` with `database: connected`.
+- Validation: Backend Node syntax checks passed for `src/app.js`, `src/server.js`, all routes, services, and middleware. Python unit tests: 12 passed after removing the orphaned test (previously 1 failed, 12 passed). No `.env`, key, or `contabo-vps-access/` files are tracked in git. Production compose and deploy workflow enforce `PASSWORD_MIN_LENGTH=12`.
+- Work left: Two-patient authenticated smoke test (still open from 2026-05-12); fix repo-wide `npm run lint` errors; record KPI measurements (extraction accuracy, reviewer time, latency); write the pilot report; tick individual phase checklists below as each item is confirmed.
+- Blockers or risks: `backend/scripts/seed-super-admin.js` falls back to a weak dev-only owner password outside production, and `DEVIATIONS.md` names it. Production refuses the fallback, but any account that ever used it should change its password. The detailed per-phase checklists below are the original plan and have not been individually ticked; the Quick Status table is the current source of truth.
 
 ### 2026-05-12 - Old FastAPI RAG API Removed
 
@@ -62,7 +72,24 @@ Authenticated clinician -> Upload document -> AI extraction -> Human review -> S
 
 ---
 
-## Recommended Stack
+## As-Built Stack (Current, verified 2026-11-11)
+
+| Layer | What is actually used | Where |
+| --- | --- | --- |
+| Frontend | React + Vite (JavaScript), single role-gated dashboard, served by Caddy | `frontend/` |
+| Backend API | Node.js + Express, JWT access/refresh auth, Helmet, CORS allow-list, rate limiting, Winston PHI scrubber | `backend/src/` |
+| Database | PostgreSQL via Prisma (`Clinic`, `User`, `Patient`, `Document`, `ExtractedField`, `ReviewAction`, `GeneratedPoc`, `RiskScore`, `AuditLog`); append-only audit trigger | `backend/prisma/` |
+| OCR | Python Tesseract OCR service (preprocessing, PDF handling, field extraction), private on the Docker network | `backend/ocr-service/` |
+| Plan of Care + RAG | LLM drafting (Gemini in production; OpenAI/Anthropic supported) with deterministic fallback, citations from approved patient evidence | `backend/src/services/poc.service.js`, `rag.service.js` |
+| Readmission risk | scikit-learn Logistic Regression baseline trained on synthetic data (AUROC + Brier reported at build); not clinically validated | `backend/ml/service/` |
+| Storage | Local container volume (`DOCUMENT_STORAGE_DIR`), not Azure Blob | `backend/src/config/env.js` |
+| Hosting / CI/CD | Docker Compose on a Contabo VPS behind Caddy TLS; GitHub Actions builds GHCR images and deploys | `infra/contabo/`, `.github/workflows/` |
+
+Intentional differences from the original spec are recorded in [DEVIATIONS.md](DEVIATIONS.md).
+
+## Original Proposal Stack (Historical)
+
+The stack below was the plan at project start. It is kept for the report's "design evolution" discussion; the table above is what is built.
 
 ### Frontend
 
@@ -124,17 +151,19 @@ If two people are blocked on missing decisions, Abdul resolves the contract firs
 
 ## Quick Status
 
-| Phase | Status | Progress |
+Audited 2026-11-11 against the code on `main` and the live deployment. This table is the source of truth; the detailed checklists further down are the original plan and are not individually ticked.
+
+| Phase | Status | Evidence |
 | --- | --- | --- |
-| Phase 0: Scope Freeze and Kickoff | 🚧 IN PROGRESS | 0/7 |
-| Phase 1: Foundation and Environment Setup | NOT STARTED | 0/9 |
-| Phase 2: Secure Upload and Data Modeling | NOT STARTED | 0/9 |
-| Phase 3: OCR and Structured Extraction | NOT STARTED | 0/10 |
-| Phase 4: Review, Validation, and Audit Workflow | NOT STARTED | 0/10 |
-| Phase 5: Plan of Care Draft Generation | NOT STARTED | 0/9 |
-| Phase 6: Readmission Risk Prediction | NOT STARTED | 0/9 |
-| Phase 7: Integration, Security Hardening, and KPIs | NOT STARTED | 0/11 |
-| Phase 8: Demo, Report, and Final Delivery | NOT STARTED | 0/10 |
+| Phase 0: Scope Freeze and Kickoff | ✅ DONE | MVP scope in `AGENTS.md`; architecture diagrams in `docs/architecture/`; spec deviations in `DEVIATIONS.md` |
+| Phase 1: Foundation and Environment Setup | ✅ DONE | Express backend, React/Vite frontend, Prisma + PostgreSQL, Docker Compose, `/api/v1/health` |
+| Phase 2: Secure Upload and Data Modeling | ✅ DONE | `POST /documents` (patient-scoped), multi-tenant Prisma schema, five-role RBAC, `assertCaseload`, upload audit events |
+| Phase 3: OCR and Structured Extraction | ✅ DONE | Tesseract OCR service, `extraction.routes.js`, `ExtractedField` with confidence. Extraction accuracy on a golden set **not yet measured** |
+| Phase 4: Review, Validation, and Audit Workflow | ✅ DONE | Review queue + claim/release/edit/approve/reject, `ReviewAction` history, review metrics endpoint, append-only `AuditLog` |
+| Phase 5: Plan of Care Draft Generation | ✅ DONE | LLM POC generation with citations + fallback, versions, edit, approve; RAG chat over approved evidence |
+| Phase 6: Readmission Risk Prediction | 🟡 BASELINE DONE | Logistic Regression on synthetic data, `POST /risk/predict/:documentId`, stored `RiskScore`. No calibration report or SHAP (deliberately descoped) |
+| Phase 7: Integration, Security Hardening, and KPIs | 🚧 IN PROGRESS | Done: Dockerization, CI/CD, Contabo + TLS deploy, prod password policy. Open: two-patient smoke test, lint errors, KPI measurements, refresh-token revocation (DEVIATIONS #6) |
+| Phase 8: Demo, Report, and Final Delivery | 🚧 IN PROGRESS | Chapters 2-3 drafted in `docs/reports/`. Open: pilot report with KPIs, demo script, screenshots, final report |
 
 ---
 
